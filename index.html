@@ -531,6 +531,7 @@ function Detail({client, onEdit, onBack, onDelete}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:32}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:"#6a5d4a",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer"}}>← Back</button>
         <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>setShowEmail(true)} style={{padding:"8px 20px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>✦ Draft Email</button>
           <button onClick={onEdit} style={{padding:"8px 20px",background:"transparent",border:"1px solid rgba(184,151,90,0.3)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Edit</button>
           {!confirm
             ? <button onClick={()=>setConfirm(true)} style={{padding:"8px 20px",background:"transparent",border:"1px solid rgba(252,165,165,0.2)",borderRadius:3,color:"#fca5a5",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Delete</button>
