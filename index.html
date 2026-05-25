@@ -8,7 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -635,9 +635,16 @@ function App() {
     <div style={{minHeight:"100vh",display:"flex"}}>
       {/* SIDEBAR */}
       <div style={{width:210,background:"#131110",borderRight:"1px solid rgba(201,168,76,0.15)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:10}}>
-        <div style={{padding:"32px 24px 20px"}}>
-          <div style={{fontSize:9,letterSpacing:"0.45em",color:gold,textTransform:"uppercase",marginBottom:5}}>Pinnacle</div>
-          <div style={{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:"#e8dcc8",letterSpacing:"0.04em"}}>CRM</div>
+        <div style={{padding:"24px 20px 16px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center"}}>
+          <svg width="36" height="36" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:10}}>
+            <polygon points="26,2 50,14 50,38 26,50 2,38 2,14" stroke="#c9a84c" strokeWidth="1.2" fill="none"/>
+            <polygon points="26,8 44,17 44,35 26,44 8,35 8,17" stroke="#c9a84c" strokeWidth="0.6" fill="none" opacity="0.35"/>
+            <polygon points="26,14 38,21 38,31 26,38 14,31 14,21" stroke="#c9a84c" strokeWidth="0.4" fill="none" opacity="0.18"/>
+            <text x="26" y="31" textAnchor="middle" fontFamily="Cinzel,serif" fontSize="14" fontWeight="500" fill="#c9a84c">P</text>
+          </svg>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:14,fontWeight:500,letterSpacing:"0.35em",color:"#e8dcc8",textTransform:"uppercase",lineHeight:1}}>Pinnacle</div>
+          <div style={{fontFamily:"'Jost',sans-serif",fontWeight:200,fontSize:7,letterSpacing:"0.45em",color:"#c9a84c",textTransform:"uppercase",marginTop:5}}>Luxury Automotive Group</div>
+          <div style={{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:6.5,letterSpacing:"0.3em",color:"#8a7d6a",textTransform:"uppercase",marginTop:4,padding:"2px 8px",border:"1px solid rgba(138,125,106,0.25)"}}>CRM</div>
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
