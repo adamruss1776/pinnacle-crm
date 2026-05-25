@@ -34,7 +34,7 @@ EMAIL RULES:
 - Create subtle urgency - vehicles like this move, but keep it classy
 - ONE clear call to action - reply, call, or come in
 - Short - 4-6 sentences max
-- Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, jessica@pinnaclecrm.ai
+- Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.ai
 
 CRITICAL: Return ONLY a raw JSON object. Start with { and end with }. No markdown. No backticks. No explanation.
 
