@@ -765,7 +765,28 @@ function AppraisalView() {
   const [loading, setLoading] = React.useState(false);
 
   const conditions = ['Excellent','Good','Fair','Poor'];
+  const [vin, setVin] = React.useState('');
+  const [vinLoading, setVinLoading] = React.useState(false);
+  const [vinError, setVinError] = React.useState('');
   const s = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const decodeVin = async () => {
+    if (!vin || vin.length !== 17) { setVinError('VIN must be exactly 17 characters'); return; }
+    setVinLoading(true); setVinError('');
+    try {
+      const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${vin}?format=json`);
+      const data = await res.json();
+      const get = (var_) => data.Results?.find(r => r.Variable === var_)?.Value || '';
+      const year = get('Model Year');
+      const make = get('Make');
+      const model = get('Model');
+      const trim = get('Trim') || get('Series') || '';
+      if (!year || !make || !model) { setVinError('Could not decode VIN — please check and try again'); setVinLoading(false); return; }
+      s('year', year); s('make', make); s('model', model); s('trim', trim);
+      setVinError('');
+    } catch(e) { setVinError('Decode failed — check your connection'); }
+    setVinLoading(false);
+  };
 
   const runAppraisal = async () => {
     setLoading(true);
@@ -822,6 +843,20 @@ Provide current market trade-in range and retail range based on real market data
       {step===1 && (
         <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
           <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>Vehicle Details</div>
+          
+          {/* VIN Decoder */}
+          <div style={{marginBottom:20,padding:16,background:"rgba(201,168,76,0.04)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3}}>
+            <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:8}}>VIN Decoder — Auto-Fill</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input value={vin} onChange={e=>setVin(e.target.value.toUpperCase())} maxLength={17} placeholder="Enter 17-character VIN..." style={{flex:1,padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,letterSpacing:"0.05em",fontFamily:"monospace"}} />
+              <button onClick={decodeVin} disabled={vinLoading} style={{padding:"9px 18px",background:vinLoading?"rgba(201,168,76,0.05)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:vinLoading?"#554f47":gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:vinLoading?"not-allowed":"pointer",whiteSpace:"nowrap"}}>
+                {vinLoading ? "Decoding…" : "Decode ✦"}
+              </button>
+            </div>
+            {vinError && <div style={{fontSize:11,color:"#fca5a5",marginTop:6}}>{vinError}</div>}
+            <div style={{fontSize:10,color:"#554f47",marginTop:6}}>Automatically fills Year, Make, Model, and Trim from the VIN.</div>
+          </div>
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
             {[['Year','year'],['Make','make'],['Model','model'],['Trim Level','trim'],['Mileage','mileage'],['Customer ZIP','zip']].map(([lbl,key])=>(
               <div key={key}>
