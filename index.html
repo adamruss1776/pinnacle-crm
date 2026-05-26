@@ -665,7 +665,7 @@ function Detail({client, onEdit, onBack, onDelete}) {
 
 
 // ── DASHBOARD ──────────────────────────────────────────────────────
-function DashboardView({clients}) {
+function DashboardView({clients, onFilterStage, onFilterSource, onSelectClient}) {
   const [convCount, setConvCount] = React.useState(0);
   React.useEffect(()=>{
     sb.from("jessica_conversations").select("id",{count:"exact"}).then(({count})=>setConvCount(count||0));
@@ -712,7 +712,9 @@ function DashboardView({clients}) {
         <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Pipeline by Stage</div>
           {STAGES.map(s=>{const n=byStage[s]||0;const p=total>0?Math.round((n/total)*100):0;const ss=STAGE_STYLE[s];return(
-            <div key={s} style={{marginBottom:8}}>
+            <div key={s} onClick={()=>onFilterStage&&onFilterStage(s)} style={{marginBottom:8,cursor:"pointer",padding:"4px 6px",borderRadius:3,transition:"background 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                 <span style={{fontSize:11,color:ss.color,textTransform:"uppercase",letterSpacing:"0.1em"}}>{s}</span>
                 <span style={{fontSize:11,color:"#8a7d6a"}}>{n}</span>
@@ -726,7 +728,9 @@ function DashboardView({clients}) {
         <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Top Lead Sources</div>
           {topSrc.length===0?<div style={{color:"#554f47",fontSize:12}}>No data yet</div>:topSrc.map(([s,n])=>(
-            <div key={s} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+            <div key={s} onClick={()=>onFilterSource&&onFilterSource(s)} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer",padding:"6px 6px",borderRadius:3,transition:"background 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,0.05)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span style={{fontSize:12,color:"#e8dcc8"}}>{s}</span>
               <span style={{fontSize:12,color:gold}}>{n}</span>
             </div>
@@ -737,7 +741,9 @@ function DashboardView({clients}) {
         <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Most Enquired Vehicles</div>
           {topV.length===0?<div style={{color:"#554f47",fontSize:12}}>No data yet</div>:topV.map(([v,n])=>(
-            <div key={v} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+            <div key={v} onClick={()=>onFilterSource&&onFilterSource(v)} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer",padding:"6px 6px",borderRadius:3,transition:"background 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,0.05)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span style={{fontSize:12,color:"#e8dcc8"}}>{v}</span>
               <span style={{fontSize:12,color:gold}}>{n}</span>
             </div>
@@ -747,7 +753,9 @@ function DashboardView({clients}) {
           <div style={{fontSize:9,letterSpacing:"0.35em",color:"#fca5a5",textTransform:"uppercase",marginBottom:12}}>Cold Leads</div>
           {cold.length===0?<div style={{color:"#554f47",fontSize:12}}>No cold leads!</div>:cold.slice(0,5).map(c=>{
             const d=Math.floor((now-new Date(c.created_at))/86400000);
-            return(<div key={c.id} style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+            return(<div key={c.id} onClick={()=>onSelectClient&&onSelectClient(c)} style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer",padding:"6px 6px",borderRadius:3,transition:"background 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(252,165,165,0.05)"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <div style={{display:"flex",justifyContent:"space-between"}}>
                 <span style={{fontSize:12,color:"#e8dcc8"}}>{c.first_name} {c.last_name}</span>
                 <span style={{fontSize:11,color:"#fca5a5"}}>{d}d</span>
@@ -1430,7 +1438,11 @@ function App() {
         </>}
 
         {view==="agent" && <AgentView />}
-        {view==="dashboard" && <DashboardView clients={clients} />}
+        {view==="dashboard" && <DashboardView clients={clients}
+          onFilterStage={(s)=>{setStageFilter(s);nav("list");}}
+          onFilterSource={(s)=>{setSearch(s);nav("list");}}
+          onSelectClient={(c)=>{setSelected(c);setView("detail");}}
+        />}
         {view==="inbox" && <JessicaInbox onPushToClient={(d)=>{setView("new"); window._prefill=d;}} />}
         {view==="followups" && <FollowUpsView clients={clients} />}
         {view==="inventory" && <InventoryView />}
