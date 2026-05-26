@@ -471,6 +471,62 @@ function ClientForm({initial, onSave, onCancel, saving}) {
           style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300,lineHeight:1.7}} />
       </div>
 
+      <GLine label="Trade-In Vehicle" />
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:8}}>VIN Decoder — Auto-Fill</div>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <input value={f.trade_vin||''} onChange={e=>s("trade_vin",e.target.value.toUpperCase())} maxLength={17} placeholder="Enter 17-character VIN (optional)..." style={{flex:1,padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,letterSpacing:"0.05em",fontFamily:"monospace"}} />
+          <button type="button" onClick={async()=>{
+            if(!f.trade_vin||f.trade_vin.length!==17)return;
+            try{
+              const res=await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${f.trade_vin}?format=json`);
+              const d=await res.json();
+              const get=v=>d.Results?.find(r=>r.Variable===v)?.Value||'';
+              s("trade_year",get("Model Year"));s("trade_make",get("Make"));
+              s("trade_model",get("Model"));s("trade_trim",get("Trim")||get("Series")||'');
+            }catch(e){}
+          }} style={{padding:"11px 16px",background:"rgba(201,168,76,0.12)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>Decode ✦</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          {[["Year","trade_year"],["Make","trade_make"],["Model","trade_model"],["Trim","trade_trim"],["Mileage","trade_mileage"]].map(([lbl,key])=>(
+            <div key={key}>
+              <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:5,fontWeight:500}}>{lbl}</div>
+              <input value={f[key]||''} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14}} />
+            </div>
+          ))}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div>
+            <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:8,fontWeight:500}}>Condition</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["Excellent","Good","Fair","Poor"].map(c=>(
+                <button type="button" key={c} onClick={()=>s("trade_condition",c)} style={{padding:"7px 12px",background:f.trade_condition===c?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_condition===c?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_condition===c?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{c}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:8,fontWeight:500}}>Accident History</div>
+            <div style={{display:"flex",gap:6}}>
+              {["No","Yes","Unknown"].map(v=>(
+                <button type="button" key={v} onClick={()=>s("trade_accidents",v)} style={{padding:"7px 12px",background:f.trade_accidents===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_accidents===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_accidents===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:8,fontWeight:500}}>Previous Owners</div>
+          <div style={{display:"flex",gap:6}}>
+            {["1","2","3+"].map(v=>(
+              <button type="button" key={v} onClick={()=>s("trade_owners",v)} style={{padding:"7px 12px",background:f.trade_owners===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_owners===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_owners===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:5,fontWeight:500}}>Trade Notes</div>
+          <textarea value={f.trade_notes||''} onChange={e=>s("trade_notes",e.target.value)} rows={2} placeholder="Carfax notes, condition details, modifications..." style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300,lineHeight:1.7}} />
+        </div>
+      </div>
+
       <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
         <button onClick={onCancel} style={{padding:"11px 24px",background:"transparent",border:"1px solid rgba(255,255,255,0.08)",borderRadius:3,color:"#7a6d5a",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase"}}>Cancel</button>
         <button onClick={()=>onSave(f)} disabled={saving} style={{padding:"11px 32px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase"}}>
