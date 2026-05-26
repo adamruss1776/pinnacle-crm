@@ -67,7 +67,9 @@ const emptyForm = () => ({
   street:"", city:"", state:"", zip:"", birthday:"", preferred_language:"English",
   co_buyer_first:"", co_buyer_last:"", co_buyer_cell:"", co_buyer_email:"",
   vehicle_of_interest:"", lead_source:"", stage:"New Lead",
-  do_not_call:false, do_not_text:false, do_not_email:false, notes:""
+  do_not_call:false, do_not_text:false, do_not_email:false, notes:"",
+  trade_vin:"", trade_year:"", trade_make:"", trade_model:"", trade_trim:"",
+  trade_mileage:"", trade_condition:"Good", trade_accidents:"No", trade_owners:"1", trade_notes:""
 });
 
 // ── SMALL COMPONENTS ───────────────────────────────────────────────
@@ -563,6 +565,21 @@ function Detail({client, onEdit, onBack, onDelete}) {
         <Row label="Lead Source" value={client.lead_source} />
         <Row label="Stage" value={client.stage} />
         <Row label="State" value={client.state} />
+        {client.trade_year && <Row label="Trade-In" value={`${client.trade_year} ${client.trade_make} ${client.trade_model} ${client.trade_trim||''}`} />}
+        {client.trade_mileage && <Row label="Trade Mileage" value={`${Number(client.trade_mileage).toLocaleString()} mi`} />}
+        {client.trade_year && (
+          <div style={{marginTop:8}}>
+            <button onClick={()=>{
+              sessionStorage.setItem('pinnacle_trade_prefill', JSON.stringify({
+                year:client.trade_year||'', make:client.trade_make||'', model:client.trade_model||'',
+                trim:client.trade_trim||'', mileage:client.trade_mileage||'',
+                condition:client.trade_condition||'Good', accidents:client.trade_accidents||'No',
+                owners:client.trade_owners||'1', zip:'', carfaxNotes:client.trade_notes||''
+              }));
+              onBack(); setTimeout(()=>document.querySelector('[data-nav="appraise"]')?.click(),100);
+            }} style={{padding:"7px 16px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>✦ Appraise Trade-In</button>
+          </div>
+        )}
       </div>
       <GLine label="Preferences" />
       <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap"}}>
@@ -757,9 +774,12 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
 // ── APPRAISAL VIEW ──────────────────────────────────────────────────
 function AppraisalView() {
   const [step, setStep] = React.useState(1);
-  const [form, setForm] = React.useState({
-    year:'', make:'', model:'', trim:'', mileage:'', condition:'Good',
-    accidents:'No', owners:'1', zip:'', carfaxNotes:''
+  const [form, setForm] = React.useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('pinnacle_trade_prefill') || 'null');
+      if (saved) { sessionStorage.removeItem('pinnacle_trade_prefill'); return saved; }
+    } catch {}
+    return { year:'', make:'', model:'', trim:'', mileage:'', condition:'Good', accidents:'No', owners:'1', zip:'', carfaxNotes:'' };
   });
   const [result, setResult] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
@@ -1031,7 +1051,7 @@ function App() {
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
           {[["Clients","list"],["AI Agent","agent"],["Inventory","inventory"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
-            <button key={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"#9a8d7a",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
+            <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"#9a8d7a",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
               {lbl}
             </button>
           ))}
