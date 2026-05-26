@@ -150,17 +150,29 @@ function AgentView() {
     setLoading(false);
   };
 
+  const sessionRef = React.useRef("s" + Date.now());
+  const saveConvo = async(msgs, vehicle, extra) => {
+    try {
+      await sb.from("jessica_conversations").upsert({session_id:sessionRef.current,messages:msgs,vehicle_interest:vehicle,status:"active",updated_at:new Date().toISOString(),...extra},{onConflict:"session_id"});
+    } catch(e) {}
+  };
   const send = async () => {
     if (!input.trim()||loading) return;
     const msg = input.trim(); setInput("");
     const newMsgs = [...messages,{role:"user",content:msg}];
     setMessages(newMsgs); setLoading(true);
     try {
-      const res = await fetch("/.netlify/functions/jessica", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:AGENT_SYSTEM_PROMPT,messages:newMsgs.map(m=>({role:m.role,content:m.content}))})});
-      const data = await res.json();
-      const reply = data.content?.[0]?.text||"I'm here — tell me more.";
-      if (reply.includes("flagging your file")) setHandoff(true);
-      setMessages(prev=>[...prev,{role:"assistant",content:reply}]);
+      const res=await fetch("/.netlify/functions/jessica",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:AGENT_SYSTEM_PROMPT,messages:newMsgs.map(m=>({role:m.role,content:m.content}))})});
+      const data=await res.json();
+      const reply=data.content?.[0]?.text||"I'm here — tell me more.";
+      const isH=reply.includes("flagging your file");
+      if(isH) setHandoff(true);
+      const allMsgs=[...newMsgs,{role:"assistant",content:reply}];
+      setMessages(allMsgs);
+      const txt=allMsgs.map(m=>m.content).join(" ");
+      const nm=txt.match(/name is ([A-Za-z]+ ?[A-Za-z]*)/i);
+      const em=txt.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}/);
+      await saveConvo(allMsgs,selectedVehicle,{handoff_triggered:isH,lead_name:nm?nm[1]:null,lead_email:em?em[0]:null,summary:reply.slice(0,120)});
     } catch { setMessages(prev=>[...prev,{role:"assistant",content:"Could you repeat that? I'm here with you."}]); }
     setLoading(false);
   };
@@ -651,6 +663,266 @@ function Detail({client, onEdit, onBack, onDelete}) {
 }
 
 
+
+// ── DASHBOARD ──────────────────────────────────────────────────────
+function DashboardView({clients}) {
+  const [convCount, setConvCount] = React.useState(0);
+  React.useEffect(()=>{
+    sb.from("jessica_conversations").select("id",{count:"exact"}).then(({count})=>setConvCount(count||0));
+  },[]);
+  const total = clients.length;
+  const byStage = STAGES.reduce((a,s)=>({...a,[s]:clients.filter(c=>c.stage===s).length}),{});
+  const closed = byStage["Closed"]||0;
+  const rate = total>0?Math.round((closed/total)*100):0;
+  const withTrade = clients.filter(c=>c.trade_year).length;
+  const tradesWon = clients.filter(c=>c.trade_year&&c.stage==="Closed").length;
+  const now = new Date();
+  const cold = clients.filter(c=>c.stage!=="Closed"&&c.stage!=="Lost"&&Math.floor((now-new Date(c.created_at))/86400000)>=5);
+  const pipeline = clients.filter(c=>c.stage==="Negotiating").length*250000;
+  const srcMap = {}; clients.forEach(c=>{if(c.lead_source)srcMap[c.lead_source]=(srcMap[c.lead_source]||0)+1;});
+  const topSrc = Object.entries(srcMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const vMap = {}; clients.forEach(c=>{if(c.vehicle_of_interest){const k=c.vehicle_of_interest.split(" ").slice(0,3).join(" ");vMap[k]=(vMap[k]||0)+1;}});
+  const topV = Object.entries(vMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const M = ({label,value,sub,color})=>(
+    <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:"18px 20px"}}>
+      <div style={{fontSize:9,letterSpacing:"0.35em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:6}}>{label}</div>
+      <div style={{fontSize:28,fontFamily:"'Cormorant Garamond',serif",color:color||gold,lineHeight:1}}>{value}</div>
+      {sub&&<div style={{fontSize:10,color:"#554f47",marginTop:4}}>{sub}</div>}
+    </div>
+  );
+  return (
+    <div style={{maxWidth:880}}>
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Overview</div>
+        <h1 style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Dashboard</h1>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2,marginBottom:2}}>
+        <M label="Total Leads" value={total} sub="all time" />
+        <M label="Closing Rate" value={rate+"%"} sub={closed+" of "+total+" closed"} />
+        <M label="Pipeline Value" value={"$"+Math.round(pipeline/1000)+"k"} sub="est. negotiating" color="#e8dcc8" />
+        <M label="Cold Leads" value={cold.length} sub="5+ days no contact" color={cold.length>0?"#fca5a5":gold} />
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2,marginBottom:16}}>
+        <M label="Trades on File" value={withTrade} sub="with trade-in" />
+        <M label="Trades to Sales" value={tradesWon} sub="closed with trade" />
+        <M label="Leads to Sales" value={closed} sub="converted" />
+        <M label="Jessica Convos" value={convCount} sub="AI conversations" color="#6fcf97" />
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2,marginBottom:2}}>
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Pipeline by Stage</div>
+          {STAGES.map(s=>{const n=byStage[s]||0;const p=total>0?Math.round((n/total)*100):0;const ss=STAGE_STYLE[s];return(
+            <div key={s} style={{marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                <span style={{fontSize:11,color:ss.color,textTransform:"uppercase",letterSpacing:"0.1em"}}>{s}</span>
+                <span style={{fontSize:11,color:"#8a7d6a"}}>{n}</span>
+              </div>
+              <div style={{height:2,background:"rgba(255,255,255,0.05)",borderRadius:1}}>
+                <div style={{height:2,width:p+"%",background:ss.color,borderRadius:1,opacity:0.7}} />
+              </div>
+            </div>
+          );})}
+        </div>
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Top Lead Sources</div>
+          {topSrc.length===0?<div style={{color:"#554f47",fontSize:12}}>No data yet</div>:topSrc.map(([s,n])=>(
+            <div key={s} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+              <span style={{fontSize:12,color:"#e8dcc8"}}>{s}</span>
+              <span style={{fontSize:12,color:gold}}>{n}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Most Enquired Vehicles</div>
+          {topV.length===0?<div style={{color:"#554f47",fontSize:12}}>No data yet</div>:topV.map(([v,n])=>(
+            <div key={v} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+              <span style={{fontSize:12,color:"#e8dcc8"}}>{v}</span>
+              <span style={{fontSize:12,color:gold}}>{n}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:"#fca5a5",textTransform:"uppercase",marginBottom:12}}>Cold Leads</div>
+          {cold.length===0?<div style={{color:"#554f47",fontSize:12}}>No cold leads!</div>:cold.slice(0,5).map(c=>{
+            const d=Math.floor((now-new Date(c.created_at))/86400000);
+            return(<div key={c.id} style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:12,color:"#e8dcc8"}}>{c.first_name} {c.last_name}</span>
+                <span style={{fontSize:11,color:"#fca5a5"}}>{d}d</span>
+              </div>
+              <div style={{fontSize:11,color:"#8a7d6a"}}>{c.vehicle_of_interest||"—"}</div>
+            </div>);
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── JESSICA INBOX ──────────────────────────────────────────────────
+function JessicaInbox({onPushToClient}) {
+  const [convos, setConvos] = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(()=>{ load(); },[]);
+  const load = async()=>{
+    setLoading(true);
+    const {data}=await sb.from("jessica_conversations").select("*").order("updated_at",{ascending:false});
+    setConvos(data||[]); setLoading(false);
+  };
+  const push = (c)=>{
+    onPushToClient({first_name:c.lead_name?c.lead_name.split(" ")[0]:"",last_name:c.lead_name?c.lead_name.split(" ").slice(1).join(" "):"",cell:c.lead_phone||"",primary_email:c.lead_email||"",vehicle_of_interest:c.vehicle_interest||"",lead_source:"Jessica AI",notes:c.summary||"",stage:"New Lead"});
+    sb.from("jessica_conversations").update({converted_to_client:true}).eq("id",c.id).then(load);
+  };
+  return (
+    <div style={{maxWidth:880}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:24}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>AI Agent</div>
+          <h1 style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Jessica\'s Inbox</h1>
+        </div>
+        <div style={{display:"flex",gap:12}}>
+          <span style={{fontSize:12,color:"#6fcf97"}}>Active: {convos.filter(c=>c.status==="active").length}</span>
+          <span style={{fontSize:12,color:"#8a7d6a"}}>Total: {convos.length}</span>
+        </div>
+      </div>
+      {loading?<div style={{color:"#554f47",padding:40,textAlign:"center"}}>Loading...</div>:convos.length===0?(
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:40,textAlign:"center",color:"#554f47",fontSize:13}}>No conversations yet. Start a chat with Jessica in the AI Agent tab.</div>
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:selected?"1fr 1fr":"1fr",gap:2}}>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {convos.map(c=>(
+              <div key={c.id} onClick={()=>setSelected(c)} style={{background:selected&&selected.id===c.id?"rgba(201,168,76,0.08)":"#1a1714",border:"1px solid "+(selected&&selected.id===c.id?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.1)"),borderRadius:4,padding:"14px 18px",cursor:"pointer"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:13,color:"#e8dcc8"}}>{c.lead_name||"Unknown Lead"}</span>
+                  <div style={{display:"flex",gap:6}}>
+                    {c.converted_to_client&&<span style={{fontSize:8,color:"#6fcf97",border:"1px solid rgba(110,231,183,0.3)",padding:"2px 5px",borderRadius:2}}>ADDED</span>}
+                    {c.handoff_triggered&&<span style={{fontSize:8,color:gold,border:"1px solid rgba(201,168,76,0.3)",padding:"2px 5px",borderRadius:2}}>HANDOFF</span>}
+                    <span style={{fontSize:10,color:"#554f47"}}>{new Date(c.updated_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:gold,marginBottom:2}}>{c.vehicle_interest||"Vehicle not specified"}</div>
+                <div style={{fontSize:11,color:"#8a7d6a"}}>{c.summary||"Conversation in progress..."}</div>
+              </div>
+            ))}
+          </div>
+          {selected&&(
+            <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:18,position:"sticky",top:20,maxHeight:"80vh",overflow:"auto"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+                <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase"}}>Conversation Detail</div>
+                <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"#7a6d5a",fontSize:16,cursor:"pointer"}}>x</button>
+              </div>
+              <div style={{marginBottom:14,padding:12,background:"#0d0c0a",borderRadius:3,border:"1px solid rgba(201,168,76,0.1)"}}>
+                <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Info Gathered</div>
+                {[["Name",selected.lead_name],["Phone",selected.lead_phone],["Email",selected.lead_email],["Vehicle",selected.vehicle_interest],["Budget",selected.lead_budget],["Timeline",selected.lead_timeline]].map(([l,v])=>v?(
+                  <div key={l} style={{display:"flex",gap:10,marginBottom:4}}>
+                    <span style={{fontSize:10,color:"#8a7d6a",minWidth:55}}>{l}</span>
+                    <span style={{fontSize:11,color:"#e8dcc8"}}>{v}</span>
+                  </div>
+                ):null)}
+              </div>
+              <div style={{marginBottom:14,maxHeight:250,overflow:"auto",display:"flex",flexDirection:"column",gap:6}}>
+                {(selected.messages||[]).map((m,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
+                    <div style={{maxWidth:"80%",padding:"7px 11px",background:m.role==="user"?"rgba(201,168,76,0.1)":"#0d0c0a",border:"1px solid "+(m.role==="user"?"rgba(201,168,76,0.25)":"rgba(255,255,255,0.06)"),borderRadius:m.role==="user"?"8px 8px 2px 8px":"8px 8px 8px 2px",fontSize:11,color:m.role==="user"?gold:"#e8dcc8",lineHeight:1.5}}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {!selected.converted_to_client?(
+                <button onClick={()=>push(selected)} style={{width:"100%",padding:10,background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.25em",textTransform:"uppercase",cursor:"pointer"}}>Push to New Client</button>
+              ):(
+                <div style={{textAlign:"center",padding:10,fontSize:12,color:"#6fcf97"}}>Already added to CRM</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── FOLLOW-UPS ─────────────────────────────────────────────────────
+function FollowUpsView({clients}) {
+  const [drafting, setDrafting] = React.useState(null);
+  const [draft, setDraft] = React.useState(null);
+  const [generating, setGenerating] = React.useState(false);
+  const now = new Date();
+  const leads = clients.filter(c=>c.stage!=="Closed"&&c.stage!=="Lost").map(c=>{
+    const d=Math.floor((now-new Date(c.created_at))/86400000);
+    const u=d>=10?{label:"10+ days — Final reach out",color:"#fca5a5"}:d>=5?{label:"5-9 days — Create urgency",color:"#fcd34d"}:d>=2?{label:"2-4 days — Warm check-in",color:"#6fcf97"}:null;
+    return {...c,days:d,urgency:u};
+  }).filter(c=>c.urgency).sort((a,b)=>b.days-a.days);
+
+  const gen = async(c)=>{
+    setDrafting(c); setGenerating(true); setDraft(null);
+    const tone=c.days>=10?"final warm reach out, keep door open":c.days>=5?"gentle urgency, vehicle may not last":"warm check-in";
+    try {
+      const res=await fetch("/.netlify/functions/jessica",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:"You are Jessica, AI sales agent. Draft a follow-up email. Tone: "+tone+". 3-4 sentences max. Warm, never pushy. Return ONLY raw JSON no backticks: {\"subject\":\"...\",\"body\":\"...\"}",messages:[{role:"user",content:"Follow-up for: "+c.first_name+" "+c.last_name+", Vehicle: "+(c.vehicle_of_interest||"luxury vehicle")+", Days: "+c.days+". Sign off: Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.ai"}]})});
+      const data=await res.json();
+      const text=(data.content?.[0]?.text||"{}").replace(/^```[\w]*\n?/,"").replace(/\n?```$/,"").trim();
+      setDraft(JSON.parse(text));
+    } catch(e){setDraft({subject:"Follow-up",body:"Error: "+e.message});}
+    setGenerating(false);
+  };
+
+  return (
+    <div style={{maxWidth:800}}>
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Sequences</div>
+        <h1 style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Follow-Ups</h1>
+      </div>
+      {leads.length===0?(
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:40,textAlign:"center"}}>
+          <div style={{fontSize:20,marginBottom:6}}>All caught up!</div>
+          <div style={{fontSize:12,color:"#554f47"}}>No leads need follow-up right now</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {leads.map(c=>(
+            <div key={c.id} style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"14px 18px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                    <span style={{fontSize:14,color:"#e8dcc8"}}>{c.first_name} {c.last_name}</span>
+                    <span style={{fontSize:8,color:c.urgency.color,border:"1px solid "+c.urgency.color+"44",padding:"2px 6px",borderRadius:2,textTransform:"uppercase",letterSpacing:"0.15em"}}>{c.urgency.label}</span>
+                  </div>
+                  <div style={{fontSize:11,color:gold,marginBottom:2}}>{c.vehicle_of_interest||"—"}</div>
+                  <div style={{fontSize:10,color:"#554f47"}}>{c.days} days since added</div>
+                </div>
+                <button onClick={()=>gen(c)} style={{padding:"7px 14px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>Draft Email</button>
+              </div>
+              {drafting&&drafting.id===c.id&&(
+                <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(201,168,76,0.1)"}}>
+                  {generating?(
+                    <div style={{display:"flex",gap:5,alignItems:"center",color:"#8a7d6a",fontSize:12}}>
+                      {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:gold,opacity:0.6,animation:"fadeUp 1.2s ease-in-out "+(i*0.2)+"s infinite"}} />)}
+                      <span style={{marginLeft:4}}>Drafting...</span>
+                    </div>
+                  ):draft&&(
+                    <div>
+                      <div style={{marginBottom:8,padding:"8px 10px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,fontSize:12,color:"#e8dcc8"}}>{draft.subject}</div>
+                      <textarea value={draft.body} onChange={e=>setDraft({...draft,body:e.target.value})} rows={4} style={{width:"100%",padding:"9px 10px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,color:"#e8dcc8",fontSize:12,lineHeight:1.6,resize:"vertical",fontFamily:"Jost,sans-serif",fontWeight:300,marginBottom:8}} />
+                      <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                        <button onClick={()=>{setDrafting(null);setDraft(null);}} style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,0.08)",borderRadius:3,color:"#7a6d5a",fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Dismiss</button>
+                        <button onClick={()=>navigator.clipboard.writeText(draft.body)} style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(201,168,76,0.25)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Copy</button>
+                        <button onClick={()=>window.open("mailto:"+c.primary_email+"?subject="+encodeURIComponent(draft.subject)+"&body="+encodeURIComponent(draft.body))} style={{padding:"6px 14px",background:"rgba(201,168,76,0.12)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Open in Mail</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── INVENTORY VIEW ──────────────────────────────────────────────────
 function InventoryView() {
   const [vehicles, setVehicles] = React.useState(() => {
@@ -1106,7 +1378,7 @@ function App() {
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
-          {[["Clients","list"],["AI Agent","agent"],["Inventory","inventory"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
+          {[["Dashboard","dashboard"],["Clients","list"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
             <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"#9a8d7a",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
               {lbl}
             </button>
@@ -1158,6 +1430,9 @@ function App() {
         </>}
 
         {view==="agent" && <AgentView />}
+        {view==="dashboard" && <DashboardView clients={clients} />}
+        {view==="inbox" && <JessicaInbox onPushToClient={(d)=>{setView("new"); window._prefill=d;}} />}
+        {view==="followups" && <FollowUpsView clients={clients} />}
         {view==="inventory" && <InventoryView />}
         {view==="appraise" && <AppraisalView />}
         {view==="detail" && selected && <Detail client={selected} onBack={()=>nav("list")} onEdit={()=>setView("edit")} onDelete={handleDelete} />}
