@@ -577,6 +577,353 @@ function Detail({client, onEdit, onBack, onDelete}) {
   );
 }
 
+
+// ── INVENTORY VIEW ──────────────────────────────────────────────────
+function InventoryView() {
+  const [vehicles, setVehicles] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]'); } catch { return []; }
+  });
+  const [showAdd, setShowAdd] = React.useState(false);
+  const [editIdx, setEditIdx] = React.useState(null);
+  const [notify, setNotify] = React.useState(null);
+  const [notifyDraft, setNotifyDraft] = React.useState(null);
+  const [generating, setGenerating] = React.useState(false);
+  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',status:'Available',notes:''};
+  const [form, setForm] = React.useState(emptyVehicle);
+
+  const save = () => {
+    const updated = editIdx !== null
+      ? vehicles.map((v,i) => i===editIdx ? form : v)
+      : [...vehicles, {...form, id: Date.now()}];
+    setVehicles(updated);
+    localStorage.setItem('pinnacle_inventory', JSON.stringify(updated));
+    setShowAdd(false); setEditIdx(null); setForm(emptyVehicle);
+  };
+
+  const remove = (idx) => {
+    const updated = vehicles.filter((_,i) => i!==idx);
+    setVehicles(updated);
+    localStorage.setItem('pinnacle_inventory', JSON.stringify(updated));
+  };
+
+  const startEdit = (idx) => { setForm(vehicles[idx]); setEditIdx(idx); setShowAdd(true); };
+
+  const generatePriceDropNotification = async (vehicle) => {
+    setNotify(vehicle);
+    setGenerating(true);
+    setNotifyDraft(null);
+    try {
+      const res = await fetch("/.netlify/functions/jessica", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          system: `You are Jessica, AI sales agent for Pinnacle CRM. Draft a price drop notification email for a luxury vehicle. Be warm, exciting, create urgency without being pushy. Keep it to 4-5 sentences. Return ONLY raw JSON: {"subject":"...","body":"..."}. No backticks, no markdown.`,
+          messages: [{role:"user", content:`Draft a price drop notification for:
+Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}
+Previous Price: $${Number(vehicle.oldPrice).toLocaleString()}
+New Price: $${Number(vehicle.price).toLocaleString()}
+Savings: $${(Number(vehicle.oldPrice)-Number(vehicle.price)).toLocaleString()}
+Color: ${vehicle.color}
+Mileage: ${vehicle.mileage}
+Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.ai`}]
+        })
+      });
+      const data = await res.json();
+      const text = (data.content?.[0]?.text||'{}').replace(/^```[\w]*\n?/m,'').replace(/\n?```$/m,'').trim();
+      const draft = JSON.parse(text);
+      setNotifyDraft(draft);
+    } catch(e) { setNotifyDraft({subject:'Price Drop Alert', body:'Could not generate draft: '+e.message}); }
+    setGenerating(false);
+  };
+
+  const s = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  return (
+    <div style={{maxWidth:800}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Inventory</div>
+          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Inventory</h1>
+        </div>
+        <button onClick={()=>{setForm(emptyVehicle);setEditIdx(null);setShowAdd(true);}} style={{padding:"11px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Add Vehicle</button>
+      </div>
+
+      {/* Add/Edit Form */}
+      {showAdd && (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,marginBottom:24}}>
+          <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>{editIdx!==null?'Edit Vehicle':'New Vehicle'}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+            {[['Year','year'],['Make','make'],['Model','model'],['Trim','trim'],['Color','color'],['VIN','vin']].map(([lbl,key])=>(
+              <div key={key}>
+                <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
+                <input value={form[key]} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13}} />
+              </div>
+            ))}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+            {[['Mileage','mileage'],['Current Price ($)','price'],['Previous Price ($)','oldPrice']].map(([lbl,key])=>(
+              <div key={key}>
+                <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
+                <input value={form[key]} onChange={e=>s(key,e.target.value)} type="number" style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13}} />
+              </div>
+            ))}
+          </div>
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Notes</div>
+            <textarea value={form.notes} onChange={e=>s('notes',e.target.value)} rows={2} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,resize:"vertical"}} />
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button onClick={()=>{setShowAdd(false);setEditIdx(null);}} style={{padding:"9px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+            <button onClick={save} style={{padding:"9px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Save Vehicle</button>
+          </div>
+        </div>
+      )}
+
+      {/* Vehicle List */}
+      {vehicles.length === 0 ? (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"#554f47",fontSize:13}}>No vehicles in inventory yet — add your first one above.</div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {vehicles.map((v,i)=>(
+            <div key={v.id||i} style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,color:"#e8dcc8",marginBottom:3}}>{v.year} {v.make} {v.model} {v.trim}</div>
+                <div style={{fontSize:12,color:"#8a7d6a"}}>{v.color} · {v.mileage?Number(v.mileage).toLocaleString()+' mi':''} · VIN: {v.vin||'—'}</div>
+              </div>
+              <div style={{textAlign:"right",minWidth:120}}>
+                <div style={{fontSize:18,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price).toLocaleString()}</div>
+                {v.oldPrice && Number(v.oldPrice) > Number(v.price) && (
+                  <div style={{fontSize:11,color:"#fca5a5",textDecoration:"line-through"}}>${Number(v.oldPrice).toLocaleString()}</div>
+                )}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                {v.oldPrice && Number(v.oldPrice) > Number(v.price) && (
+                  <button onClick={()=>generatePriceDropNotification(v)} style={{padding:"7px 14px",background:"rgba(252,211,77,0.08)",border:"1px solid rgba(252,211,77,0.25)",borderRadius:3,color:"#fcd34d",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>↓ Notify</button>
+                )}
+                <button onClick={()=>startEdit(i)} style={{padding:"7px 14px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Edit</button>
+                <button onClick={()=>remove(i)} style={{padding:"7px 14px",background:"transparent",border:"1px solid rgba(252,165,165,0.2)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Price Drop Notification Modal */}
+      {notify && (
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.75)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.3)",borderRadius:8,width:"100%",maxWidth:580,maxHeight:"85vh",overflow:"auto"}}>
+            <div style={{padding:"20px 24px",borderBottom:"1px solid rgba(201,168,76,0.15)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Price Drop Alert</div>
+                <div style={{fontSize:15,color:"#e8dcc8"}}>{notify.year} {notify.make} {notify.model} — ${Number(notify.price).toLocaleString()}</div>
+              </div>
+              <button onClick={()=>{setNotify(null);setNotifyDraft(null);}} style={{background:"none",border:"none",color:"#7a6d5a",fontSize:18,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:24}}>
+              {generating && (
+                <div style={{textAlign:"center",padding:"32px 0"}}>
+                  <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:12}}>
+                    {[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:gold,animation:`fadeUp 1.2s ease-in-out ${i*0.2}s infinite`,opacity:0.6}} />)}
+                  </div>
+                  <div style={{fontSize:13,color:"#8a7d6a"}}>Jessica is drafting your notification…</div>
+                </div>
+              )}
+              {notifyDraft && !generating && (
+                <div>
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Subject</div>
+                    <div style={{padding:"11px 14px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,fontSize:14,color:"#e8dcc8"}}>{notifyDraft.subject}</div>
+                  </div>
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Email Body</div>
+                    <textarea value={notifyDraft.body} onChange={e=>setNotifyDraft({...notifyDraft,body:e.target.value})} rows={8} style={{width:"100%",padding:"12px 14px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,lineHeight:1.7,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+                    <div style={{fontSize:11,color:"#554f47",marginTop:5}}>Edit before sending. This goes to all clients who enquired about this vehicle.</div>
+                  </div>
+                  <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+                    <button onClick={()=>generatePriceDropNotification(notify)} style={{padding:"9px 18px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>↺ Regenerate</button>
+                    <button onClick={()=>{navigator.clipboard.writeText(notifyDraft.body);}} style={{padding:"9px 18px",background:"transparent",border:"1px solid rgba(201,168,76,0.3)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Copy</button>
+                    <button onClick={()=>window.open(`mailto:?subject=${encodeURIComponent(notifyDraft.subject)}&body=${encodeURIComponent(notifyDraft.body)}`)} style={{padding:"9px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Open in Mail ↗</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── APPRAISAL VIEW ──────────────────────────────────────────────────
+function AppraisalView() {
+  const [step, setStep] = React.useState(1);
+  const [form, setForm] = React.useState({
+    year:'', make:'', model:'', trim:'', mileage:'', condition:'Good',
+    accidents:'No', owners:'1', zip:'', carfaxNotes:''
+  });
+  const [result, setResult] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const conditions = ['Excellent','Good','Fair','Poor'];
+  const s = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const runAppraisal = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const res = await fetch("/.netlify/functions/jessica", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          system: `You are Jessica, a luxury automotive appraisal specialist for Pinnacle CRM. You have deep knowledge of current market values for luxury and exotic vehicles. Use your knowledge of current market conditions, depreciation curves, and comparable sales to give a precise, credible trade-in appraisal range. Be confident and specific. Return ONLY raw JSON with no backticks: {"trade_in_low": number, "trade_in_high": number, "retail_low": number, "retail_high": number, "summary": "2-3 sentence explanation", "factors": ["factor1","factor2","factor3"], "recommendation": "one sentence advice for the dealer"}`,
+          messages: [{role:"user", content:`Appraise this vehicle:
+Year: ${form.year}
+Make: ${form.make}
+Model: ${form.model}
+Trim: ${form.trim}
+Mileage: ${form.mileage}
+Condition: ${form.condition}
+Accident History: ${form.accidents}
+Previous Owners: ${form.owners}
+Customer ZIP: ${form.zip}
+Carfax/Additional Notes: ${form.carfaxNotes||'None provided'}
+
+Provide current market trade-in range and retail range based on real market data for this vehicle.`}]
+        })
+      });
+      const data = await res.json();
+      const text = (data.content?.[0]?.text||'{}').replace(/^```[\w]*\n?/m,'').replace(/\n?```$/m,'').trim();
+      setResult(JSON.parse(text));
+      setStep(3);
+    } catch(e) { alert('Appraisal failed: '+e.message); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{maxWidth:680}}>
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Appraisal Tool</div>
+        <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Appraisal</h1>
+      </div>
+
+      {/* Step indicators */}
+      <div style={{display:"flex",gap:0,marginBottom:28}}>
+        {[['1','Vehicle Info'],['2','History'],['3','Results']].map(([n,lbl],i)=>(
+          <div key={n} style={{display:"flex",alignItems:"center",gap:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",background:step===i+1?"rgba(201,168,76,0.12)":"transparent",border:`1px solid ${step===i+1?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.1)"}`,borderRadius:3}}>
+              <div style={{width:18,height:18,borderRadius:"50%",background:step>i?"rgba(201,168,76,0.3)":"rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:step>i?gold:"#554f47"}}>{n}</div>
+              <span style={{fontSize:11,color:step===i+1?gold:"#554f47",letterSpacing:"0.15em",textTransform:"uppercase"}}>{lbl}</span>
+            </div>
+            {i<2 && <div style={{width:20,height:1,background:"rgba(201,168,76,0.15)"}} />}
+          </div>
+        ))}
+      </div>
+
+      {step===1 && (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
+          <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>Vehicle Details</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+            {[['Year','year'],['Make','make'],['Model','model'],['Trim Level','trim'],['Mileage','mileage'],['Customer ZIP','zip']].map(([lbl,key])=>(
+              <div key={key}>
+                <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
+                <input value={form[key]} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13}} />
+              </div>
+            ))}
+          </div>
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Condition</div>
+            <div style={{display:"flex",gap:8}}>
+              {conditions.map(c=>(
+                <button key={c} onClick={()=>s('condition',c)} style={{padding:"8px 16px",background:form.condition===c?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.condition===c?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.condition===c?gold:"#8a7d6a",fontSize:11,letterSpacing:"0.15em",cursor:"pointer"}}>{c}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end"}}>
+            <button onClick={()=>setStep(2)} style={{padding:"10px 24px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Next →</button>
+          </div>
+        </div>
+      )}
+
+      {step===2 && (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
+          <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>Vehicle History</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+            <div>
+              <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Accident History</div>
+              <div style={{display:"flex",gap:8}}>
+                {['No','Yes','Unknown'].map(v=>(
+                  <button key={v} onClick={()=>s('accidents',v)} style={{padding:"8px 14px",background:form.accidents===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.accidents===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.accidents===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Previous Owners</div>
+              <div style={{display:"flex",gap:8}}>
+                {['1','2','3+'].map(v=>(
+                  <button key={v} onClick={()=>s('owners',v)} style={{padding:"8px 14px",background:form.owners===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.owners===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.owners===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Carfax Notes / Additional History</div>
+            <div style={{fontSize:11,color:"#554f47",marginBottom:8}}>Ask the customer to pull their free report at carfax.com and share any relevant details here.</div>
+            <textarea value={form.carfaxNotes} onChange={e=>s('carfaxNotes',e.target.value)} rows={3} placeholder="e.g. Clean title, 2 owners, last serviced at dealer 6 months ago..." style={{width:"100%",padding:"10px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button onClick={()=>setStep(1)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>← Back</button>
+            <button onClick={runAppraisal} disabled={loading} style={{padding:"10px 24px",background:loading?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:loading?"not-allowed":"pointer"}}>
+              {loading ? "Appraising…" : "Run Appraisal ✦"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step===3 && result && (
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Value boxes */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
+            <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,textAlign:"center"}}>
+              <div style={{fontSize:9,letterSpacing:"0.4em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Trade-In Range</div>
+              <div style={{fontSize:28,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${result.trade_in_low?.toLocaleString()} – ${result.trade_in_high?.toLocaleString()}</div>
+            </div>
+            <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,textAlign:"center"}}>
+              <div style={{fontSize:9,letterSpacing:"0.4em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Retail Range</div>
+              <div style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>${result.retail_low?.toLocaleString()} – ${result.retail_high?.toLocaleString()}</div>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:20}}>
+            <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:10}}>Market Analysis</div>
+            <div style={{fontSize:14,color:"#e8dcc8",lineHeight:1.7,marginBottom:14}}>{result.summary}</div>
+            {result.factors && (
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {result.factors.map((f,i)=>(
+                  <div key={i} style={{padding:"5px 12px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:20,fontSize:11,color:"#8a7d6a"}}>{f}</div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dealer recommendation */}
+          {result.recommendation && (
+            <div style={{background:"rgba(110,231,183,0.05)",border:"1px solid rgba(110,231,183,0.2)",borderRadius:4,padding:16}}>
+              <div style={{fontSize:9,letterSpacing:"0.35em",color:"#6fcf97",textTransform:"uppercase",marginBottom:6}}>Dealer Recommendation</div>
+              <div style={{fontSize:13,color:"#e8dcc8",lineHeight:1.6}}>{result.recommendation}</div>
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button onClick={()=>{setStep(1);setForm({year:'',make:'',model:'',trim:'',mileage:'',condition:'Good',accidents:'No',owners:'1',zip:'',carfaxNotes:''});setResult(null);}} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>New Appraisal</button>
+            <button onClick={()=>window.print()} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Print Report</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MAIN APP ───────────────────────────────────────────────────────
 function App() {
   const [view, setView] = useState("list");
@@ -648,7 +995,7 @@ function App() {
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
-          {[["Clients","list"],["AI Agent","agent"],["New Lead","new"]].map(([lbl,v])=>(
+          {[["Clients","list"],["AI Agent","agent"],["Inventory","inventory"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
             <button key={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"#9a8d7a",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
               {lbl}
             </button>
@@ -700,6 +1047,8 @@ function App() {
         </>}
 
         {view==="agent" && <AgentView />}
+        {view==="inventory" && <InventoryView />}
+        {view==="appraise" && <AppraisalView />}
         {view==="detail" && selected && <Detail client={selected} onBack={()=>nav("list")} onEdit={()=>setView("edit")} onDelete={handleDelete} />}
 
         {view==="edit" && selected && <>
