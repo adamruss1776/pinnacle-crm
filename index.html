@@ -8,6 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,6 +44,16 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const gold = "#d4a843";
 
 const JESSICA_PHOTO = "./jessica.jpg";
+
+const STORES = [
+  "Pinnacle Orlando",
+  "Pinnacle Miami",
+  "Pinnacle Tampa",
+  "Pinnacle Jacksonville",
+  "Pinnacle Naples",
+  "Pinnacle West Palm Beach",
+  "Pinnacle Fort Lauderdale"
+];
 
 const AGENT_SYSTEM_PROMPT = `You are Jessica, the AI sales agent for Pinnacle CRM — representing a luxury automotive dealership specializing in Lamborghini, Bentley, and Rolls-Royce.
 YOUR VOICE: Warm, calm, confident — trusted advisor, not a salesperson. Short and punchy — 2-4 sentences max. One question per message.
@@ -586,6 +597,18 @@ function Card({client, onClick}) {
 function Detail({client, onEdit, onBack, onDelete}) {
   const [confirm, setConfirm] = useState(false);
   const [showEmail, setShowEmail] = React.useState(false);
+  const inventory = React.useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]'); } catch { return []; }
+  }, []);
+  const invMatches = React.useMemo(() => {
+    if (!client.vehicle_of_interest || inventory.length === 0) return [];
+    const keywords = client.vehicle_of_interest.toLowerCase().split(/\s+/).filter(w => w.length > 3 && !/^\d+$/.test(w));
+    if (!keywords.length) return [];
+    return inventory.filter(v => {
+      const vText = `${v.year} ${v.make} ${v.model} ${v.trim}`.toLowerCase();
+      return keywords.some(k => vText.includes(k));
+    }).slice(0, 4);
+  }, [client.vehicle_of_interest, inventory]);
   function Row({label, value}) {
     if (!value) return null;
     return (
@@ -657,6 +680,20 @@ function Detail({client, onEdit, onBack, onDelete}) {
           </div>
         ))}
       </div>
+      {invMatches.length > 0 && <>
+        <GLine label="Available in Inventory" />
+        <div style={{marginBottom:24,display:"flex",flexDirection:"column",gap:6}}>
+          {invMatches.map((v,i) => (
+            <div key={i} style={{padding:"10px 14px",background:"rgba(201,168,76,0.04)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</div>
+                <div style={{fontSize:11,color:"#8a7d6a"}}>{v.color}{v.mileage?` · ${Number(v.mileage).toLocaleString()} mi`:''}{v.store?` · ${v.store}`:''}</div>
+              </div>
+              {v.price && <div style={{fontSize:15,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price||0).toLocaleString()}</div>}
+            </div>
+          ))}
+        </div>
+      </>}
       {client.notes && <><GLine label="Notes" /><div style={{padding:"16px 18px",background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:4,fontSize:14,color:"#8a7d6a",lineHeight:1.8}}>{client.notes}</div></>}
     </div>
   );
@@ -941,34 +978,38 @@ function InventoryView() {
   const [notify, setNotify] = React.useState(null);
   const [notifyDraft, setNotifyDraft] = React.useState(null);
   const [generating, setGenerating] = React.useState(false);
-  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',status:'Available',notes:''};
+  const [storeFilter, setStoreFilter] = React.useState('All');
+  const [showImport, setShowImport] = React.useState(false);
+  const [importData, setImportData] = React.useState([]);
+  const [importStore, setImportStore] = React.useState('');
+  const fileInputRef = React.useRef(null);
+
+  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',store:'',status:'Available',notes:''};
   const [form, setForm] = React.useState(emptyVehicle);
+
+  const saveToLS = (list) => localStorage.setItem('pinnacle_inventory', JSON.stringify(list));
 
   const save = () => {
     const updated = editIdx !== null
       ? vehicles.map((v,i) => i===editIdx ? form : v)
       : [...vehicles, {...form, id: Date.now()}];
     setVehicles(updated);
-    localStorage.setItem('pinnacle_inventory', JSON.stringify(updated));
+    saveToLS(updated);
     setShowAdd(false); setEditIdx(null); setForm(emptyVehicle);
   };
 
   const remove = (idx) => {
     const updated = vehicles.filter((_,i) => i!==idx);
-    setVehicles(updated);
-    localStorage.setItem('pinnacle_inventory', JSON.stringify(updated));
+    setVehicles(updated); saveToLS(updated);
   };
 
   const startEdit = (idx) => { setForm(vehicles[idx]); setEditIdx(idx); setShowAdd(true); };
 
   const generatePriceDropNotification = async (vehicle) => {
-    setNotify(vehicle);
-    setGenerating(true);
-    setNotifyDraft(null);
+    setNotify(vehicle); setGenerating(true); setNotifyDraft(null);
     try {
       const res = await fetch("/.netlify/functions/jessica", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
+        method: "POST", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
           system: `You are Jessica, AI sales agent for Pinnacle CRM. Draft a price drop notification email for a luxury vehicle. Be warm, exciting, create urgency without being pushy. Keep it to 4-5 sentences. Return ONLY raw JSON: {"subject":"...","body":"..."}. No backticks, no markdown.`,
           messages: [{role:"user", content:`Draft a price drop notification for:
@@ -976,30 +1017,130 @@ Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model} ${vehicle.trim}
 Previous Price: $${Number(vehicle.oldPrice).toLocaleString()}
 New Price: $${Number(vehicle.price).toLocaleString()}
 Savings: $${(Number(vehicle.oldPrice)-Number(vehicle.price)).toLocaleString()}
-Color: ${vehicle.color}
-Mileage: ${vehicle.mileage}
+Color: ${vehicle.color}  Mileage: ${vehicle.mileage}
 Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.ai`}]
         })
       });
       const data = await res.json();
       const text = (data.content?.[0]?.text||'{}').replace(/^```[\w]*\n?/m,'').replace(/\n?```$/m,'').trim();
-      const draft = JSON.parse(text);
-      setNotifyDraft(draft);
+      setNotifyDraft(JSON.parse(text));
     } catch(e) { setNotifyDraft({subject:'Price Drop Alert', body:'Could not generate draft: '+e.message}); }
     setGenerating(false);
   };
 
+  const mapCols = (headers, rowObj) => {
+    const find = (...keys) => {
+      for (const k of keys) {
+        const h = headers.find(h => h.toLowerCase().replace(/[\s_\-]/g,'').includes(k.toLowerCase().replace(/[\s_\-]/g,'')));
+        if (h !== undefined && rowObj[h] !== undefined && rowObj[h] !== '') return String(rowObj[h]);
+      }
+      return '';
+    };
+    return {
+      year: find('year','modelyear','yr'), make: find('make','brand','manufacturer'),
+      model: find('model'), trim: find('trim','grade','level','package'),
+      vin: find('vin','vehiclevin'), color: find('color','extcolor','exteriorcolor'),
+      mileage: find('mileage','miles','odometer'),
+      price: find('price','askingprice','saleprice','msrp','listprice','internetprice'),
+      oldPrice: find('oldprice','originalprice','wasprice','previousprice'),
+      store: find('store','location','dealer','dealership','branch','lot'),
+      notes: find('notes','comments','description'), status:'Available'
+    };
+  };
+
+  const handleFileImport = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        if (json.length < 2) { alert('File appears empty or has no data rows'); return; }
+        const headers = json[0].map(h => String(h));
+        const rows = json.slice(1).filter(r => r.some(c => c !== ''));
+        const mapped = rows.map(row => {
+          const rowObj = {}; headers.forEach((h,i) => { rowObj[h] = row[i] !== undefined ? String(row[i]) : ''; });
+          return mapCols(headers, rowObj);
+        });
+        setImportData(mapped); setShowImport(true);
+      } catch(err) { alert('Failed to parse file: ' + err.message); }
+    };
+    reader.readAsArrayBuffer(file); e.target.value = '';
+  };
+
+  const doImport = () => {
+    const withStore = importData.map((v, i) => ({...v, store: v.store || importStore || '', id: Date.now() + i}));
+    const updated = [...vehicles, ...withStore];
+    setVehicles(updated); saveToLS(updated);
+    setShowImport(false); setImportData([]); setImportStore('');
+  };
+
   const s = (k,v) => setForm(f=>({...f,[k]:v}));
+  const usedStores = [...new Set(vehicles.map(v => v.store || 'Unassigned').filter(Boolean))];
+  const storeOptions = ['All', ...STORES.filter(st => usedStores.includes(st)), ...(usedStores.filter(st => !STORES.includes(st) && st !== 'Unassigned')), ...(usedStores.includes('Unassigned') ? ['Unassigned'] : [])];
+  const filtered = storeFilter === 'All' ? vehicles : vehicles.filter(v => (v.store || 'Unassigned') === storeFilter);
 
   return (
-    <div style={{maxWidth:800}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
+    <div style={{maxWidth:860}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Inventory</div>
           <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Inventory</h1>
         </div>
-        <button onClick={()=>{setForm(emptyVehicle);setEditIdx(null);setShowAdd(true);}} style={{padding:"11px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Add Vehicle</button>
+        <div style={{display:"flex",gap:10}}>
+          <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} style={{display:"none"}} />
+          <button onClick={()=>fileInputRef.current?.click()} style={{padding:"10px 18px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#8a7d6a",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>↑ Import CSV/Excel</button>
+          <button onClick={()=>{setForm(emptyVehicle);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Add Vehicle</button>
+        </div>
       </div>
+
+      {/* Store Filter */}
+      {vehicles.length > 0 && storeOptions.length > 1 && (
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+          {storeOptions.map(st => (
+            <button key={st} onClick={()=>setStoreFilter(st)} style={{padding:"6px 12px",background:storeFilter===st?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${storeFilter===st?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.06)"}`,borderRadius:3,color:storeFilter===st?gold:"#9a8d7a",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"}}>
+              {st}{st!=='All'?` (${vehicles.filter(v=>(v.store||'Unassigned')===st).length})`:''}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* CSV/Excel Import Preview */}
+      {showImport && importData.length > 0 && (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.3)",borderRadius:4,padding:24,marginBottom:24}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:12}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Import Preview</div>
+              <div style={{fontSize:13,color:"#8a7d6a"}}>{importData.length} vehicles detected</div>
+            </div>
+            <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontSize:9,letterSpacing:"0.25em",color:gold,textTransform:"uppercase",marginBottom:5}}>Assign to Store</div>
+                <select value={importStore} onChange={e=>setImportStore(e.target.value)} style={{padding:"7px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:12,appearance:"none",WebkitAppearance:"none"}}>
+                  <option value="">Use CSV store column</option>
+                  {STORES.map(st=><option key={st} value={st}>{st}</option>)}
+                </select>
+              </div>
+              <button onClick={()=>{setShowImport(false);setImportData([]);}} style={{padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+              <button onClick={doImport} style={{padding:"8px 20px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Import {importData.length} Vehicles</button>
+            </div>
+          </div>
+          <div style={{maxHeight:260,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+            {importData.slice(0,10).map((v,i) => (
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3,fontSize:12}}>
+                <span style={{color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <div style={{display:"flex",gap:14,color:"#8a7d6a"}}>
+                  {v.vin && <span>VIN: {v.vin}</span>}
+                  {v.price && <span style={{color:gold}}>${Number(v.price).toLocaleString()}</span>}
+                  {(v.store||importStore) && <span>{v.store||importStore}</span>}
+                </div>
+              </div>
+            ))}
+            {importData.length > 10 && <div style={{fontSize:11,color:"#554f47",textAlign:"center",padding:8}}>…and {importData.length-10} more</div>}
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Form */}
       {showAdd && (
@@ -1021,9 +1162,21 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
               </div>
             ))}
           </div>
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Notes</div>
-            <textarea value={form.notes} onChange={e=>s('notes',e.target.value)} rows={2} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,resize:"vertical"}} />
+          <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:12,marginBottom:12}}>
+            <div>
+              <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Store Location</div>
+              <div style={{position:"relative"}}>
+                <select value={form.store} onChange={e=>s('store',e.target.value)} style={{width:"100%",padding:"9px 32px 9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:form.store?"#e8dcc8":"#7a6d5a",fontSize:13,appearance:"none",WebkitAppearance:"none"}}>
+                  <option value="">Select store…</option>
+                  {STORES.map(st=><option key={st} value={st}>{st}</option>)}
+                </select>
+                <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:gold,fontSize:9,pointerEvents:"none"}}>▾</div>
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Notes</div>
+              <textarea value={form.notes} onChange={e=>s('notes',e.target.value)} rows={1} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+            </div>
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button onClick={()=>{setShowAdd(false);setEditIdx(null);}} style={{padding:"9px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
@@ -1033,31 +1186,39 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
       )}
 
       {/* Vehicle List */}
-      {vehicles.length === 0 ? (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"#554f47",fontSize:13}}>No vehicles in inventory yet — add your first one above.</div>
+      {filtered.length === 0 ? (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"#554f47",fontSize:13}}>
+          {vehicles.length === 0 ? "No vehicles in inventory yet — add one above or import a CSV/Excel file." : "No vehicles match the selected store filter."}
+        </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          {vehicles.map((v,i)=>(
-            <div key={v.id||i} style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:15,color:"#e8dcc8",marginBottom:3}}>{v.year} {v.make} {v.model} {v.trim}</div>
-                <div style={{fontSize:12,color:"#8a7d6a"}}>{v.color} · {v.mileage?Number(v.mileage).toLocaleString()+' mi':''} · VIN: {v.vin||'—'}</div>
+          {filtered.map((v,i)=>{
+            const actualIdx = vehicles.indexOf(v);
+            return (
+              <div key={v.id||i} style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                    <span style={{fontSize:15,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                    {v.store && <span style={{fontSize:9,color:"#8a7d6a",border:"1px solid rgba(138,125,106,0.25)",padding:"1px 6px",borderRadius:2,textTransform:"uppercase",letterSpacing:"0.12em",whiteSpace:"nowrap"}}>{v.store.replace('Pinnacle ','')}</span>}
+                  </div>
+                  <div style={{fontSize:12,color:"#8a7d6a"}}>{v.color} · {v.mileage?Number(v.mileage).toLocaleString()+' mi':''} · VIN: {v.vin||'—'}</div>
+                </div>
+                <div style={{textAlign:"right",minWidth:120}}>
+                  <div style={{fontSize:18,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price||0).toLocaleString()}</div>
+                  {v.oldPrice && Number(v.oldPrice) > Number(v.price) && (
+                    <div style={{fontSize:11,color:"#fca5a5",textDecoration:"line-through"}}>${Number(v.oldPrice).toLocaleString()}</div>
+                  )}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  {v.oldPrice && Number(v.oldPrice) > Number(v.price) && (
+                    <button onClick={()=>generatePriceDropNotification(v)} style={{padding:"7px 14px",background:"rgba(252,211,77,0.08)",border:"1px solid rgba(252,211,77,0.25)",borderRadius:3,color:"#fcd34d",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>↓ Notify</button>
+                  )}
+                  <button onClick={()=>startEdit(actualIdx)} style={{padding:"7px 14px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Edit</button>
+                  <button onClick={()=>remove(actualIdx)} style={{padding:"7px 14px",background:"transparent",border:"1px solid rgba(252,165,165,0.2)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Delete</button>
+                </div>
               </div>
-              <div style={{textAlign:"right",minWidth:120}}>
-                <div style={{fontSize:18,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price).toLocaleString()}</div>
-                {v.oldPrice && Number(v.oldPrice) > Number(v.price) && (
-                  <div style={{fontSize:11,color:"#fca5a5",textDecoration:"line-through"}}>${Number(v.oldPrice).toLocaleString()}</div>
-                )}
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                {v.oldPrice && Number(v.oldPrice) > Number(v.price) && (
-                  <button onClick={()=>generatePriceDropNotification(v)} style={{padding:"7px 14px",background:"rgba(252,211,77,0.08)",border:"1px solid rgba(252,211,77,0.25)",borderRadius:3,color:"#fcd34d",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>↓ Notify</button>
-                )}
-                <button onClick={()=>startEdit(i)} style={{padding:"7px 14px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Edit</button>
-                <button onClick={()=>remove(i)} style={{padding:"7px 14px",background:"transparent",border:"1px solid rgba(252,165,165,0.2)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Delete</button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1315,6 +1476,350 @@ Provide current market trade-in range and retail range based on real market data
   );
 }
 
+// ── RECALL MONITOR ─────────────────────────────────────────────────
+function RecallMonitorView() {
+  const [vehicles, setVehicles] = React.useState([]);
+  const [results, setResults] = React.useState({});
+  const [checking, setChecking] = React.useState(false);
+  const [lastChecked, setLastChecked] = React.useState(null);
+  const [sendingEmail, setSendingEmail] = React.useState(false);
+  const [emailStatus, setEmailStatus] = React.useState(null);
+  const [emailTo, setEmailTo] = React.useState('adam@pinnaclecrm.ai');
+
+  React.useEffect(() => {
+    const inv = JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]');
+    setVehicles(inv);
+    const saved = JSON.parse(localStorage.getItem('pinnacle_recall_results') || 'null');
+    if (saved) { setResults(saved.results || {}); setLastChecked(saved.checkedAt); }
+  }, []);
+
+  const checkRecalls = async () => {
+    setChecking(true);
+    const toCheck = vehicles.filter(v => v.vin && v.vin.length === 17);
+    const newResults = {...results};
+    for (const v of toCheck) {
+      try {
+        const res = await fetch(`https://api.nhtsa.gov/recalls/vehicle?vin=${v.vin}`);
+        const data = await res.json();
+        newResults[v.vin] = data.results || [];
+      } catch(e) { newResults[v.vin] = []; }
+    }
+    const checkedAt = new Date().toISOString();
+    setResults(newResults); setLastChecked(checkedAt);
+    localStorage.setItem('pinnacle_recall_results', JSON.stringify({results:newResults, checkedAt}));
+    setChecking(false);
+  };
+
+  const sendRecallAlert = async () => {
+    setSendingEmail(true); setEmailStatus(null);
+    const recalledVehicles = vehicles.filter(v => v.vin && (results[v.vin]||[]).length > 0);
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px">
+<h2 style="color:#d4a843;font-family:Georgia,serif;border-bottom:2px solid #d4a843;padding-bottom:8px">Pinnacle CRM — NHTSA Recall Alert</h2>
+<p style="color:#555">The following vehicles in your inventory have active NHTSA recalls as of ${new Date(lastChecked).toLocaleString()}:</p>
+${recalledVehicles.map(v => `<div style="margin:16px 0;padding:16px;background:#fff8f0;border-left:4px solid #d4a843;border-radius:4px">
+<strong style="font-size:16px">${v.year} ${v.make} ${v.model} ${v.trim||''}</strong><br/>
+<span style="color:#888;font-size:13px">VIN: ${v.vin}${v.store?' · '+v.store:''}</span><br/>
+<strong style="color:#c0392b;margin-top:8px;display:block">${results[v.vin].length} Active Recall${results[v.vin].length!==1?'s':''}</strong>
+${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;border:1px solid #e0d0c0;border-radius:3px;font-size:13px">
+<strong>${r.Component||r.component||'Recall'}</strong>: ${r.Summary||r.summary||r.Consequence||r.consequence||'See NHTSA.gov for full details'}
+</div>`).join('')}
+</div>`).join('')}
+<p style="color:#aaa;font-size:11px;margin-top:24px">Pinnacle CRM · Automated Recall Monitor · <a href="https://www.nhtsa.gov/recalls">nhtsa.gov/recalls</a></p>
+</div>`;
+    try {
+      const res = await fetch('/.netlify/functions/send-email', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({to:emailTo, subject:`⚠️ NHTSA Recall Alert — ${recalledVehicles.length} Vehicle${recalledVehicles.length!==1?'s':''} Affected`, html})
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEmailStatus('sent');
+    } catch(e) { setEmailStatus('error:' + e.message); }
+    setSendingEmail(false);
+  };
+
+  const withRecalls = vehicles.filter(v => v.vin && (results[v.vin]||[]).length > 0);
+  const noRecalls = vehicles.filter(v => v.vin && results[v.vin] && results[v.vin].length === 0);
+  const unchecked = vehicles.filter(v => !v.vin || !results[v.vin]);
+
+  return (
+    <div style={{maxWidth:860}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Safety</div>
+          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Recall Monitor</h1>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          {lastChecked && <span style={{fontSize:11,color:"#554f47"}}>Last checked: {new Date(lastChecked).toLocaleDateString()}</span>}
+          <button onClick={checkRecalls} disabled={checking||vehicles.length===0} style={{padding:"10px 22px",background:checking?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:checking?"#554f47":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:checking?"not-allowed":"pointer"}}>
+            {checking ? "Checking NHTSA…" : "Run Recall Check"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:16}}>
+        {[[withRecalls.length,"Active Recalls","#fca5a5","rgba(252,165,165,0.2)"],[noRecalls.length,"Clear","#6fcf97","rgba(110,231,183,0.15)"],[unchecked.length,"Not Checked","#8a7d6a","rgba(255,255,255,0.06)"]].map(([n,lbl,col,bg])=>(
+          <div key={lbl} style={{background:"#1a1714",border:`1px solid ${bg}`,borderRadius:4,padding:"14px 18px",textAlign:"center"}}>
+            <div style={{fontSize:26,color:col,fontFamily:"'Cormorant Garamond',serif"}}>{n}</div>
+            <div style={{fontSize:9,letterSpacing:"0.35em",color:col,textTransform:"uppercase",marginTop:4}}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {withRecalls.length > 0 && (
+        <div style={{background:"rgba(252,165,165,0.04)",border:"1px solid rgba(252,165,165,0.2)",borderRadius:4,padding:18,marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+            <div style={{fontSize:10,letterSpacing:"0.35em",color:"#fca5a5",textTransform:"uppercase"}}>⚠ {withRecalls.length} Vehicle{withRecalls.length!==1?"s":""} with Active Recalls</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com" style={{padding:"6px 10px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:12,width:200,fontFamily:"'Jost',sans-serif"}} />
+              <button onClick={sendRecallAlert} disabled={sendingEmail} style={{padding:"7px 16px",background:"rgba(252,165,165,0.1)",border:"1px solid rgba(252,165,165,0.35)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>
+                {sendingEmail?"Sending…":"Email Alert"}
+              </button>
+            </div>
+          </div>
+          {emailStatus && <div style={{fontSize:11,color:emailStatus==="sent"?"#6fcf97":"#fca5a5",marginBottom:10}}>{emailStatus==="sent"?"✓ Alert sent successfully":"✗ "+emailStatus.replace('error:','')}</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {withRecalls.map((v,i)=>(
+              <div key={i} style={{background:"#1a1714",border:"1px solid rgba(252,165,165,0.15)",borderRadius:3,padding:"12px 16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:14,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                  <span style={{fontSize:10,color:"#fca5a5",border:"1px solid rgba(252,165,165,0.3)",padding:"2px 8px",borderRadius:2}}>{results[v.vin].length} Recall{results[v.vin].length!==1?"s":""}</span>
+                </div>
+                <div style={{fontSize:11,color:"#554f47",marginBottom:8}}>VIN: {v.vin}{v.store?` · ${v.store}`:""}</div>
+                {results[v.vin].map((r,j)=>(
+                  <div key={j} style={{padding:"8px 10px",background:"rgba(252,165,165,0.04)",borderRadius:2,marginBottom:4}}>
+                    <div style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>{r.Component||r.component||"Recall"}</div>
+                    <div style={{fontSize:11,color:"#8a7d6a",lineHeight:1.5}}>{r.Summary||r.summary||r.Consequence||r.consequence||"See NHTSA.gov for details"}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {noRecalls.length > 0 && (
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:"#6fcf97",textTransform:"uppercase",marginBottom:10}}>Clear Vehicles</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {noRecalls.map((v,i)=>(
+              <div key={i} style={{background:"#1a1714",border:"1px solid rgba(110,231,183,0.08)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <div style={{display:"flex",gap:14,alignItems:"center"}}>
+                  {v.store&&<span style={{fontSize:10,color:"#554f47"}}>{v.store}</span>}
+                  <span style={{fontSize:10,color:"#6fcf97",border:"1px solid rgba(110,231,183,0.2)",padding:"2px 8px",borderRadius:2}}>✓ Clear</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {unchecked.length > 0 && (
+        <div>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Not Yet Checked</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {unchecked.map((v,i)=>(
+              <div key={i} style={{background:"#1a1714",border:"1px solid rgba(255,255,255,0.04)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:"#8a7d6a"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <span style={{fontSize:10,color:"#4a4038"}}>{v.vin?"Run check above":"No VIN on file"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {vehicles.length === 0 && (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"#554f47",fontSize:13}}>
+          No inventory vehicles found. Add vehicles in the Inventory tab first, then run a recall check here.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── STORE INVENTORY MONITOR ─────────────────────────────────────────
+function StoreInventoryView({clients}) {
+  const [vehicles, setVehicles] = React.useState([]);
+  const [scanning, setScanning] = React.useState(false);
+  const [scanReport, setScanReport] = React.useState(null);
+  const [sendingEmail, setSendingEmail] = React.useState(false);
+  const [emailStatus, setEmailStatus] = React.useState(null);
+  const [emailTo, setEmailTo] = React.useState('adam@pinnaclecrm.ai');
+  const [selectedStore, setSelectedStore] = React.useState(null);
+
+  React.useEffect(() => {
+    setVehicles(JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]'));
+  }, []);
+
+  const byStore = React.useMemo(() => STORES.reduce((acc, store) => {
+    acc[store] = vehicles.filter(v => v.store === store);
+    return acc;
+  }, {}), [vehicles]);
+
+  const unassigned = vehicles.filter(v => !v.store || !STORES.includes(v.store));
+
+  const runScan = async () => {
+    setScanning(true); setScanReport(null); setEmailStatus(null);
+    const inventoryByStore = STORES.reduce((acc, store) => {
+      acc[store] = byStore[store].map(v => ({
+        vehicle: `${v.year} ${v.make} ${v.model} ${v.trim}`,
+        price: v.price, mileage: v.mileage,
+        daysListed: v.id ? Math.floor((Date.now()-v.id)/86400000) : null
+      }));
+      return acc;
+    }, {});
+    const clientInterests = (clients||[]).map(c => c.vehicle_of_interest).filter(Boolean);
+    try {
+      const res = await fetch('/.netlify/functions/inventory-scan', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({stores:STORES, inventory:inventoryByStore, clientInterests})
+      });
+      const data = await res.json();
+      setScanReport(data);
+    } catch(e) { setScanReport({summary:'Scan failed: '+e.message, alerts:[], recommendations:[], totalVehicles:vehicles.length}); }
+    setScanning(false);
+  };
+
+  const emailReport = async () => {
+    if (!scanReport) return;
+    setSendingEmail(true); setEmailStatus(null);
+    const html = `<div style="font-family:Arial,sans-serif;max-width:640px">
+<h2 style="color:#d4a843;font-family:Georgia,serif;border-bottom:2px solid #d4a843;padding-bottom:8px">Pinnacle CRM — Daily Inventory Scan</h2>
+<p style="color:#666;font-size:13px">Generated ${new Date().toLocaleString()} · ${scanReport.totalVehicles} total vehicles across ${STORES.length} locations</p>
+<h3 style="color:#333">Executive Summary</h3>
+<p style="color:#555;line-height:1.7">${scanReport.summary}</p>
+<h3 style="color:#333">Inventory by Store</h3>
+<table style="border-collapse:collapse;width:100%;font-size:13px">
+${STORES.map(s=>`<tr style="border-bottom:1px solid #eee"><td style="padding:8px 12px;color:#333">${s}</td><td style="padding:8px 12px;color:#d4a843;font-weight:bold;text-align:right">${(byStore[s]||[]).length} vehicles</td></tr>`).join('')}
+</table>
+${(scanReport.alerts||[]).length>0?`<h3 style="color:#e74c3c">⚠ Alerts (${scanReport.alerts.length})</h3>${scanReport.alerts.map(a=>`<div style="margin:8px 0;padding:12px;background:#fff5f5;border-left:3px solid #e74c3c;border-radius:2px;font-size:13px"><strong>${a.store}</strong>: ${a.message}</div>`).join('')}`:''}
+${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommendations</h3><ul style="color:#555;font-size:13px;line-height:2">${scanReport.recommendations.map(r=>`<li>${r}</li>`).join('')}</ul>`:''}
+<p style="color:#aaa;font-size:11px;margin-top:24px">Pinnacle CRM · Jessica Daily Inventory Scan</p>
+</div>`;
+    try {
+      const res = await fetch('/.netlify/functions/send-email', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({to:emailTo, subject:`Pinnacle Inventory Scan — ${new Date().toLocaleDateString()} · ${vehicles.length} Vehicles`, html})
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEmailStatus('sent');
+    } catch(e) { setEmailStatus('error:'+e.message); }
+    setSendingEmail(false);
+  };
+
+  return (
+    <div style={{maxWidth:900}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Multi-Store</div>
+          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Store Inventory Monitor</h1>
+        </div>
+        <button onClick={runScan} disabled={scanning} style={{padding:"10px 22px",background:scanning?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:scanning?"#554f47":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:scanning?"not-allowed":"pointer"}}>
+          {scanning?"✦ Scanning…":"✦ Run Daily Scan"}
+        </button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:20}}>
+        {STORES.map(store => {
+          const sv = byStore[store]||[];
+          const avgPrice = sv.length>0?Math.round(sv.reduce((s,v)=>s+Number(v.price||0),0)/sv.length):0;
+          const aging = sv.filter(v=>v.id&&(Date.now()-v.id)/86400000>90).length;
+          const isSelected = selectedStore===store;
+          return (
+            <div key={store} onClick={()=>setSelectedStore(isSelected?null:store)}
+              style={{background:isSelected?"rgba(201,168,76,0.08)":"#1a1714",border:`1px solid ${isSelected?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.15)"}`,borderRadius:4,padding:"16px 20px",cursor:"pointer",transition:"all 0.2s"}}
+              onMouseEnter={e=>{if(!isSelected){e.currentTarget.style.borderColor="rgba(201,168,76,0.3)";e.currentTarget.style.background="#201e1a";}}}
+              onMouseLeave={e=>{if(!isSelected){e.currentTarget.style.borderColor="rgba(201,168,76,0.15)";e.currentTarget.style.background="#1a1714";}}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontSize:13,color:"#e8dcc8"}}>{store}</div>
+                <div style={{fontSize:22,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>{sv.length}</div>
+              </div>
+              <div style={{display:"flex",gap:20}}>
+                {avgPrice>0&&<div><div style={{fontSize:9,color:"#554f47",letterSpacing:"0.2em",textTransform:"uppercase"}}>Avg Price</div><div style={{fontSize:12,color:"#8a7d6a"}}>${avgPrice.toLocaleString()}</div></div>}
+                {aging>0&&<div><div style={{fontSize:9,color:"#fca5a5",letterSpacing:"0.2em",textTransform:"uppercase"}}>90+ Days</div><div style={{fontSize:12,color:"#fca5a5"}}>{aging}</div></div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {selectedStore && (
+        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:20,marginBottom:20}}>
+          <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:14}}>{selectedStore}</div>
+          {(byStore[selectedStore]||[]).length===0?(
+            <div style={{color:"#554f47",fontSize:13}}>No vehicles at this location</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {(byStore[selectedStore]||[]).map((v,i)=>{
+                const daysListed = v.id?Math.floor((Date.now()-v.id)/86400000):null;
+                return (
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3}}>
+                    <div>
+                      <div style={{fontSize:13,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</div>
+                      <div style={{fontSize:11,color:"#8a7d6a"}}>{v.color}{v.mileage?` · ${Number(v.mileage).toLocaleString()} mi`:""} · VIN: {v.vin||"—"}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:15,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price||0).toLocaleString()}</div>
+                      {daysListed!==null&&<div style={{fontSize:10,color:daysListed>90?"#fca5a5":"#554f47"}}>{daysListed}d on lot</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {unassigned.length>0&&(
+        <div style={{background:"#1a1714",border:"1px solid rgba(255,255,255,0.06)",borderRadius:4,padding:"14px 20px",marginBottom:20}}>
+          <div style={{fontSize:9,letterSpacing:"0.3em",color:"#554f47",textTransform:"uppercase",marginBottom:10}}>Unassigned ({unassigned.length})</div>
+          <div style={{fontSize:11,color:"#554f47"}}>Edit these vehicles in Inventory to assign them to a store.</div>
+        </div>
+      )}
+
+      {scanReport&&(
+        <div style={{background:"rgba(201,168,76,0.04)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Jessica's Daily Scan Report</div>
+              <div style={{fontSize:11,color:"#554f47"}}>{scanReport.totalVehicles} vehicles · {new Date().toLocaleDateString()}</div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} style={{padding:"5px 10px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:11,width:190,fontFamily:"'Jost',sans-serif"}} />
+              <button onClick={emailReport} disabled={sendingEmail} style={{padding:"6px 14px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>
+                {sendingEmail?"Sending…":"Email Report"}
+              </button>
+            </div>
+          </div>
+          {emailStatus&&<div style={{fontSize:11,color:emailStatus==="sent"?"#6fcf97":"#fca5a5",marginBottom:10}}>{emailStatus==="sent"?"✓ Report emailed":"✗ "+emailStatus.replace('error:','')}</div>}
+          <div style={{fontSize:14,color:"#e8dcc8",lineHeight:1.7,marginBottom:14}}>{scanReport.summary}</div>
+          {(scanReport.alerts||[]).length>0&&(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:9,letterSpacing:"0.3em",color:"#fca5a5",textTransform:"uppercase",marginBottom:8}}>Alerts</div>
+              {scanReport.alerts.map((a,i)=>(
+                <div key={i} style={{padding:"8px 12px",background:"rgba(252,165,165,0.05)",border:"1px solid rgba(252,165,165,0.15)",borderRadius:3,marginBottom:5}}>
+                  <span style={{fontSize:11,color:"#fca5a5"}}>{a.store} · </span>
+                  <span style={{fontSize:11,color:"#e8dcc8"}}>{a.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(scanReport.recommendations||[]).length>0&&(
+            <div>
+              <div style={{fontSize:9,letterSpacing:"0.3em",color:"#6fcf97",textTransform:"uppercase",marginBottom:8}}>Recommendations</div>
+              {scanReport.recommendations.map((r,i)=>(
+                <div key={i} style={{padding:"7px 12px",background:"rgba(110,231,183,0.04)",border:"1px solid rgba(110,231,183,0.12)",borderRadius:3,marginBottom:4,fontSize:12,color:"#8a7d6a"}}>{r}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MAIN APP ───────────────────────────────────────────────────────
 function App() {
   const [view, setView] = useState("list");
@@ -1386,7 +1891,7 @@ function App() {
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
-          {[["Dashboard","dashboard"],["Clients","list"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
+          {[["Dashboard","dashboard"],["Clients","list"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Recalls","recalls"],["Stores","stores"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
             <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"#9a8d7a",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
               {lbl}
             </button>
@@ -1446,6 +1951,8 @@ function App() {
         {view==="inbox" && <JessicaInbox onPushToClient={(d)=>{setView("new"); window._prefill=d;}} />}
         {view==="followups" && <FollowUpsView clients={clients} />}
         {view==="inventory" && <InventoryView />}
+        {view==="recalls" && <RecallMonitorView />}
+        {view==="stores" && <StoreInventoryView clients={clients} />}
         {view==="appraise" && <AppraisalView />}
         {view==="detail" && selected && <Detail client={selected} onBack={()=>nav("list")} onEdit={()=>setView("edit")} onDelete={handleDelete} />}
 
