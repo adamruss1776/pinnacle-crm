@@ -1850,7 +1850,7 @@ function SalesView() {
   const [showAdd, setShowAdd] = React.useState(false);
   const [showGoals, setShowGoals] = React.useState(false);
   const [editIdx, setEditIdx] = React.useState(null);
-  const emptyDeal = {date:new Date().toISOString().split('T')[0],vehicle:'',stockNum:'',front:'',back:'',notes:''};
+  const emptyDeal = {date:new Date().toISOString().split('T')[0],vehicle:'',stockNum:'',type:'new',front:'',back:'',notes:''};
   const [form, setForm] = React.useState(emptyDeal);
   const [goalForm, setGoalForm] = React.useState({...goals});
 
@@ -1885,6 +1885,11 @@ function SalesView() {
   const pctMonth = today / totalDays;
   const pctYear = dayOfYear / daysInYear;
   const fmt = n => '$' + Math.round(n||0).toLocaleString();
+  const calcComm = d => {
+    const front = Number(d.front)||0;
+    const back  = Number(d.back)||0;
+    return Math.round(front * (d.type==='used' ? 0.20 : 0.15) + back * 0.10);
+  };
 
   const thisMonthDeals = deals.filter(d => {
     const dt = new Date(d.date+'T00:00:00');
@@ -1897,17 +1902,21 @@ function SalesView() {
   const mtdBack  = thisMonthDeals.reduce((s,d)=>s+(Number(d.back)||0),0);
   const mtdTotal = mtdFront + mtdBack;
   const mtdAvg   = mtdUnits>0 ? Math.round(mtdTotal/mtdUnits) : 0;
+  const mtdComm  = thisMonthDeals.reduce((s,d)=>s+calcComm(d),0);
 
   const ytdUnits = thisYearDeals.length;
   const ytdFront = thisYearDeals.reduce((s,d)=>s+(Number(d.front)||0),0);
   const ytdBack  = thisYearDeals.reduce((s,d)=>s+(Number(d.back)||0),0);
   const ytdTotal = ytdFront + ytdBack;
   const ytdAvg   = ytdUnits>0 ? Math.round(ytdTotal/ytdUnits) : 0;
+  const ytdComm  = thisYearDeals.reduce((s,d)=>s+calcComm(d),0);
 
   const pacedMonthUnits = pctMonth>0 ? Math.round(mtdUnits/pctMonth) : 0;
   const pacedMonthGross = pctMonth>0 ? Math.round(mtdTotal/pctMonth) : 0;
+  const pacedMonthComm  = pctMonth>0 ? Math.round(mtdComm/pctMonth)  : 0;
   const pacedYearUnits  = pctYear>0  ? Math.round(ytdUnits/pctYear)  : 0;
   const pacedYearGross  = pctYear>0  ? Math.round(ytdTotal/pctYear)  : 0;
+  const pacedYearComm   = pctYear>0  ? Math.round(ytdComm/pctYear)   : 0;
 
   const bestDeal = thisMonthDeals.reduce((b,d)=>{
     const t=(Number(d.front)||0)+(Number(d.back)||0);
@@ -1959,8 +1968,8 @@ function SalesView() {
       <div style={{fontSize:9,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:10}}>
         Month to Date — {now.toLocaleString('default',{month:'long',year:'numeric'})}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:2,marginBottom:goals.monthlyUnits>0||goals.monthlyGross>0?8:16}}>
-        {[["Units Sold",mtdUnits,"var(--text)"],["Front Gross",fmt(mtdFront),"var(--text)"],["Back Gross",fmt(mtdBack),"var(--text)"],["Total Gross",fmt(mtdTotal),gold],["Avg Per Car",fmt(mtdAvg),"var(--text)"]].map(([lbl,val,col])=>(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:2,marginBottom:goals.monthlyUnits>0||goals.monthlyGross>0?8:16}}>
+        {[["Units Sold",mtdUnits,"var(--text)"],["Front Gross",fmt(mtdFront),"var(--text)"],["Back Gross",fmt(mtdBack),"var(--text)"],["Total Gross",fmt(mtdTotal),gold],["Avg Per Car",fmt(mtdAvg),"var(--text)"],["Est. Commission",fmt(mtdComm),"#6fcf97"]].map(([lbl,val,col])=>(
           <div key={lbl} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:"16px 18px"}}>
             <div style={{fontSize:9,letterSpacing:"0.3em",color:"var(--muted)",textTransform:"uppercase",marginBottom:6}}>{lbl}</div>
             <div style={{fontSize:26,fontFamily:"'Cormorant Garamond',serif",color:col,lineHeight:1}}>{val}</div>
@@ -2011,6 +2020,10 @@ function SalesView() {
               <div style={{fontSize:9,color:"var(--dim2)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:4}}>Projected Gross</div>
               <div style={{fontSize:28,color:gold,fontFamily:"'Cormorant Garamond',serif",lineHeight:1}}>{mtdUnits>0?fmt(pacedMonthGross):"—"}</div>
             </div>
+            <div>
+              <div style={{fontSize:9,color:"var(--dim2)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:4}}>Proj. Commission</div>
+              <div style={{fontSize:28,color:"#6fcf97",fontFamily:"'Cormorant Garamond',serif",lineHeight:1}}>{mtdUnits>0?fmt(pacedMonthComm):"—"}</div>
+            </div>
           </div>
           <div style={{height:2,background:"var(--w06)",borderRadius:1,marginBottom:6}}>
             <div style={{height:2,width:(pctMonth*100)+'%',background:"rgba(201,168,76,0.4)",borderRadius:1}} />
@@ -2027,6 +2040,10 @@ function SalesView() {
             <div>
               <div style={{fontSize:9,color:"var(--dim2)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:4}}>Projected Gross</div>
               <div style={{fontSize:28,color:gold,fontFamily:"'Cormorant Garamond',serif",lineHeight:1}}>{ytdUnits>0?fmt(pacedYearGross):"—"}</div>
+            </div>
+            <div>
+              <div style={{fontSize:9,color:"var(--dim2)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:4}}>Proj. Commission</div>
+              <div style={{fontSize:28,color:"#6fcf97",fontFamily:"'Cormorant Garamond',serif",lineHeight:1}}>{ytdUnits>0?fmt(pacedYearComm):"—"}</div>
             </div>
           </div>
           <div style={{height:2,background:"var(--w06)",borderRadius:1,marginBottom:6}}>
@@ -2069,8 +2086,8 @@ function SalesView() {
 
       {/* YTD */}
       <div style={{fontSize:9,letterSpacing:"0.4em",color:"var(--muted)",textTransform:"uppercase",marginBottom:10}}>Year to Date — {now.getFullYear()}</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:2,marginBottom:24}}>
-        {[["Units",ytdUnits,"var(--text)"],["Front",fmt(ytdFront),"var(--text)"],["Back",fmt(ytdBack),"var(--text)"],["Total Gross",fmt(ytdTotal),gold],["Avg Per Car",fmt(ytdAvg),"var(--text)"]].map(([lbl,val,col])=>(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:2,marginBottom:24}}>
+        {[["Units",ytdUnits,"var(--text)"],["Front",fmt(ytdFront),"var(--text)"],["Back",fmt(ytdBack),"var(--text)"],["Total Gross",fmt(ytdTotal),gold],["Avg Per Car",fmt(ytdAvg),"var(--text)"],["Est. Commission",fmt(ytdComm),"#6fcf97"]].map(([lbl,val,col])=>(
           <div key={lbl} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.08)",borderRadius:4,padding:"14px 18px"}}>
             <div style={{fontSize:9,letterSpacing:"0.3em",color:"var(--dim2)",textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
             <div style={{fontSize:20,fontFamily:"'Cormorant Garamond',serif",color:col,lineHeight:1}}>{val}</div>
@@ -2088,12 +2105,17 @@ function SalesView() {
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
           {[...thisYearDeals].sort((a,b)=>new Date(b.date)-new Date(a.date)).map((d,i)=>{
             const total=(Number(d.front)||0)+(Number(d.back)||0);
+            const comm=calcComm(d);
+            const isUsed=d.type==='used';
             const origIdx=deals.indexOf(d);
             return (
               <div key={d.id||i} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3,padding:"12px 18px",display:"flex",alignItems:"center",gap:16}}>
                 <div style={{minWidth:72,fontSize:11,color:"var(--dim2)",flexShrink:0}}>{new Date(d.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.vehicle||"Vehicle not specified"}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
+                    <span style={{fontSize:13,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.vehicle||"Vehicle not specified"}</span>
+                    <span style={{fontSize:8,letterSpacing:"0.18em",textTransform:"uppercase",padding:"2px 6px",borderRadius:2,background:isUsed?"rgba(147,197,253,0.12)":"rgba(111,207,151,0.12)",color:isUsed?"#93c5fd":"#6fcf97",flexShrink:0}}>{isUsed?"Used":"New"}</span>
+                  </div>
                   {d.stockNum&&<div style={{fontSize:10,color:"var(--dim2)"}}>Stock #{d.stockNum}</div>}
                 </div>
                 <div style={{display:"flex",gap:18,alignItems:"center",flexShrink:0}}>
@@ -2105,9 +2127,13 @@ function SalesView() {
                     <div style={{fontSize:9,color:"var(--dim2)",textTransform:"uppercase",letterSpacing:"0.15em"}}>Back</div>
                     <div style={{fontSize:13,color:"var(--text)"}}>${(Number(d.back)||0).toLocaleString()}</div>
                   </div>
-                  <div style={{textAlign:"right",minWidth:90}}>
+                  <div style={{textAlign:"right",minWidth:80}}>
                     <div style={{fontSize:9,color:"var(--dim2)",textTransform:"uppercase",letterSpacing:"0.15em"}}>Total</div>
-                    <div style={{fontSize:16,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${total.toLocaleString()}</div>
+                    <div style={{fontSize:15,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${total.toLocaleString()}</div>
+                  </div>
+                  <div style={{textAlign:"right",minWidth:80,borderLeft:"1px solid rgba(111,207,151,0.2)",paddingLeft:14}}>
+                    <div style={{fontSize:9,color:"#6fcf97",textTransform:"uppercase",letterSpacing:"0.15em"}}>My Pay</div>
+                    <div style={{fontSize:15,color:"#6fcf97",fontFamily:"'Cormorant Garamond',serif"}}>${comm.toLocaleString()}</div>
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button onClick={()=>{setForm({...d,front:d.front||'',back:d.back||''});setEditIdx(origIdx);setShowAdd(true);}} style={{padding:"5px 10px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:2,color:gold,fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"}}>Edit</button>
@@ -2133,14 +2159,31 @@ function SalesView() {
                 <div><div style={lbl9}>Date</div><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={fieldStyle} /></div>
                 <div><div style={lbl9}>Stock #</div><input value={form.stockNum||''} onChange={e=>setForm(f=>({...f,stockNum:e.target.value}))} placeholder="Optional" style={fieldStyle} /></div>
               </div>
+              <div style={{marginBottom:12}}>
+                <div style={lbl9}>Vehicle Type</div>
+                <div style={{display:"flex",gap:0,borderRadius:3,overflow:"hidden",border:"1px solid rgba(201,168,76,0.2)"}}>
+                  {["new","used"].map(t=>(
+                    <button key={t} onClick={()=>setForm(f=>({...f,type:t}))}
+                      style={{flex:1,padding:"9px 0",background:form.type===t?"rgba(201,168,76,0.18)":"transparent",border:"none",color:form.type===t?gold:"var(--muted)",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",transition:"all 0.18s"}}>
+                      {t==="new"?"New Car (15% front)":"Used Car (20% front)"}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div style={{marginBottom:12}}><div style={lbl9}>Vehicle Sold</div><input value={form.vehicle} onChange={e=>setForm(f=>({...f,vehicle:e.target.value}))} placeholder="e.g. 2025 Rolls-Royce Cullinan" style={fieldStyle} /></div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
                 <div><div style={lbl9}>Front End Gross ($)</div><input type="number" value={form.front} onChange={e=>setForm(f=>({...f,front:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
                 <div><div style={lbl9}>Back End Gross ($)</div><input type="number" value={form.back} onChange={e=>setForm(f=>({...f,back:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
               </div>
-              <div style={{padding:"11px 16px",background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                <span style={{fontSize:10,color:"var(--muted)",letterSpacing:"0.2em",textTransform:"uppercase"}}>Total Gross</span>
-                <span style={{fontSize:24,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${((Number(form.front)||0)+(Number(form.back)||0)).toLocaleString()}</span>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                <div style={{padding:"11px 16px",background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"var(--muted)",letterSpacing:"0.2em",textTransform:"uppercase"}}>Total Gross</span>
+                  <span style={{fontSize:22,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${((Number(form.front)||0)+(Number(form.back)||0)).toLocaleString()}</span>
+                </div>
+                <div style={{padding:"11px 16px",background:"rgba(111,207,151,0.07)",border:"1px solid rgba(111,207,151,0.25)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"#6fcf97",letterSpacing:"0.2em",textTransform:"uppercase"}}>My Commission</span>
+                  <span style={{fontSize:22,color:"#6fcf97",fontFamily:"'Cormorant Garamond',serif"}}>${calcComm(form).toLocaleString()}</span>
+                </div>
               </div>
               <div style={{marginBottom:20}}><div style={lbl9}>Notes</div><input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Optional — customer name, deal highlights, etc." style={fieldStyle} /></div>
               <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
