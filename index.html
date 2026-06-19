@@ -13,18 +13,37 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0d0c0a; --surface: #1a1714; --border: rgba(201,168,76,0.2);
-      --gold: #d4a843; --text: #e8dcc8; --muted: #8a7d6a; --dim: #554f47;
-      --green: #6fcf97; --yellow: #fcd34d; --red: #fca5a5; --blue: #93c5fd;
+      /* Light mode defaults */
+      --bg: #f9f6f1; --sidebar-bg: #ede9e0; --surface: #ffffff; --surface-hover: #f5f0e8;
+      --text: #1a1208; --text-dim: #3d2e18;
+      --muted: #8a7d6a; --muted2: #7a6d5a; --nav-text: #5a4d3a;
+      --dim: #9a8d7a; --dim2: #aaa090; --dim3: #c0b8a8;
+      --border: rgba(180,140,45,0.3);
+      --w02: rgba(0,0,0,0.02); --w03: rgba(0,0,0,0.03); --w04: rgba(0,0,0,0.05);
+      --w05: rgba(0,0,0,0.06); --w06: rgba(0,0,0,0.08); --w08: rgba(0,0,0,0.10);
+      --w10: rgba(0,0,0,0.12);
+      --gold: #d4a843; --green: #6fcf97; --yellow: #fcd34d; --red: #fca5a5; --blue: #93c5fd;
+      --scrollbar: #c8bfb0;
     }
-    body { background: var(--bg); color: var(--text); font-family: 'Jost', sans-serif; font-weight: 300; min-height: 100vh; }
+    :root[data-dark] {
+      --bg: #0d0c0a; --sidebar-bg: #131110; --surface: #1a1714; --surface-hover: #201e1a;
+      --text: #e8dcc8; --text-dim: #c8bfa8;
+      --muted: #8a7d6a; --muted2: #7a6d5a; --nav-text: #9a8d7a;
+      --dim: #6a5d4a; --dim2: #554f47; --dim3: #4a4038;
+      --border: rgba(201,168,76,0.2);
+      --w02: rgba(255,255,255,0.02); --w03: rgba(255,255,255,0.03); --w04: rgba(255,255,255,0.04);
+      --w05: rgba(255,255,255,0.05); --w06: rgba(255,255,255,0.06); --w08: var(--w08);
+      --w10: rgba(255,255,255,0.1);
+      --scrollbar: #2a2520;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Jost', sans-serif; font-weight: 300; min-height: 100vh; transition: background 0.3s, color 0.3s; }
     h1, h2, h3 { font-family: 'Cormorant Garamond', serif; font-weight: 400; }
     input, select, textarea, button { font-family: 'Jost', sans-serif; font-weight: 300; }
     input::placeholder, textarea::placeholder { color: var(--muted); }
     input:focus, select:focus, textarea:focus { outline: none; border-color: rgba(201,168,76,0.6) !important; }
-    select option { background: #0d0d12; color: var(--text); }
+    select option { background: var(--surface); color: var(--text); }
     ::-webkit-scrollbar { width: 3px; }
-    ::-webkit-scrollbar-thumb { background: #2a2520; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
     @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
     .fu { animation: fadeUp 0.3s ease forwards; }
   </style>
@@ -88,12 +107,12 @@ function Lbl({children}) {
   return <div style={{fontSize:10,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:7,fontWeight:500}}>{children}</div>;
 }
 function Inp(props) {
-  return <input {...props} style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14,transition:"border-color 0.2s",...(props.style||{})}} />;
+  return <input {...props} style={{width:"100%",padding:"11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:14,transition:"border-color 0.2s",...(props.style||{})}} />;
 }
 function Sel({children,...props}) {
   return (
     <div style={{position:"relative"}}>
-      <select {...props} style={{width:"100%",padding:"11px 36px 11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:props.value?"#e8dcc8":"#7a6d5a",fontSize:14,appearance:"none",WebkitAppearance:"none",transition:"border-color 0.2s"}}>
+      <select {...props} style={{width:"100%",padding:"11px 36px 11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:props.value?"var(--text)":"var(--muted2)",fontSize:14,appearance:"none",WebkitAppearance:"none",transition:"border-color 0.2s"}}>
         {children}
       </select>
       <div style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",color:gold,fontSize:9,pointerEvents:"none"}}>▾</div>
@@ -124,10 +143,10 @@ function Badge({stage}) {
 function Tog({label,checked,onChange}) {
   return (
     <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
-      <div onClick={onChange} style={{width:36,height:20,borderRadius:10,background:checked?"rgba(252,165,165,0.25)":"rgba(255,255,255,0.05)",border:`1px solid ${checked?"rgba(252,165,165,0.4)":"rgba(255,255,255,0.1)"}`,position:"relative",transition:"all 0.2s",flexShrink:0}}>
-        <div style={{position:"absolute",top:2,left:checked?18:2,width:14,height:14,borderRadius:"50%",background:checked?"#fca5a5":"#4a4038",transition:"left 0.2s"}} />
+      <div onClick={onChange} style={{width:36,height:20,borderRadius:10,background:checked?"rgba(252,165,165,0.25)":"var(--w05)",border:`1px solid ${checked?"rgba(252,165,165,0.4)":"var(--w10)"}`,position:"relative",transition:"all 0.2s",flexShrink:0}}>
+        <div style={{position:"absolute",top:2,left:checked?18:2,width:14,height:14,borderRadius:"50%",background:checked?"#fca5a5":"var(--dim3)",transition:"left 0.2s"}} />
       </div>
-      <span style={{fontSize:12,color:"#8a7d6a"}}>{label}</span>
+      <span style={{fontSize:12,color:"var(--muted)"}}>{label}</span>
     </label>
   );
 }
@@ -135,7 +154,7 @@ function Tog({label,checked,onChange}) {
 
 function JessicaAvatar({size=40}) {
   return (
-    <div style={{width:size,height:size,borderRadius:"50%",border:"1.5px solid #c9a84c",overflow:"hidden",flexShrink:0,background:"#1a1714"}}>
+    <div style={{width:size,height:size,borderRadius:"50%",border:"1.5px solid #c9a84c",overflow:"hidden",flexShrink:0,background:"var(--surface)"}}>
       <img src={JESSICA_PHOTO} alt="Jessica" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center 15%"}} />
     </div>
   );
@@ -195,38 +214,38 @@ function AgentView() {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>AI Agent</div>
-          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Jessica</h1>
+          <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Jessica</h1>
         </div>
         {started && <button onClick={reset} style={{padding:"11px 22px",background:"rgba(201,168,76,0.12)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ New Lead</button>}
       </div>
 
       {!started ? (
         <div>
-          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:28,marginBottom:16}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:28,marginBottom:16}}>
             <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
               <JessicaAvatar size={56} />
               <div>
-                <div style={{fontSize:16,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif",marginBottom:2}}>Jessica</div>
+                <div style={{fontSize:16,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif",marginBottom:2}}>Jessica</div>
                 <div style={{fontSize:11,color:"#6fcf97"}}>● Online · AI Sales Agent</div>
               </div>
             </div>
-            <div style={{fontSize:13,color:"#8a7d6a",marginBottom:20,lineHeight:1.7}}>Select a vehicle to simulate an inbound lead and see how Jessica responds.</div>
+            <div style={{fontSize:13,color:"var(--muted)",marginBottom:20,lineHeight:1.7}}>Select a vehicle to simulate an inbound lead and see how Jessica responds.</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               {AGENT_VEHICLES.map(v=>(
-                <button key={v} onClick={()=>startConvo(v)} style={{background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,padding:"11px 14px",color:"#e8dcc8",fontSize:13,cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}
+                <button key={v} onClick={()=>startConvo(v)} style={{background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,padding:"11px 14px",color:"var(--text)",fontSize:13,cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=gold;e.currentTarget.style.color=gold;}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.2)";e.currentTarget.style.color="#e8dcc8";}}>
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.2)";e.currentTarget.style.color="var(--text)";}}>
                   {v}
                 </button>
               ))}
             </div>
           </div>
-          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
             <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:14}}>Jessica's Rulebook</div>
             {[["Voice","Warm, short, confident — trusted advisor"],["Goal","Qualify lead, capture info, justify price"],["Handoff","Test drive request or strong buying signal"],["Compliance","FTC + TCPA baked in — always"]].map(([k,v])=>(
               <div key={k} style={{display:"flex",gap:16,marginBottom:12,paddingBottom:12,borderBottom:"1px solid rgba(201,168,76,0.1)"}}>
                 <div style={{color:gold,fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase",minWidth:90,paddingTop:2}}>{k}</div>
-                <div style={{color:"#8a7d6a",fontSize:13,lineHeight:1.5}}>{v}</div>
+                <div style={{color:"var(--muted)",fontSize:13,lineHeight:1.5}}>{v}</div>
               </div>
             ))}
           </div>
@@ -237,17 +256,17 @@ function AgentView() {
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <JessicaAvatar size={38} />
               <div>
-                <div style={{fontSize:14,color:"#e8dcc8"}}>Jessica → {selectedVehicle}</div>
+                <div style={{fontSize:14,color:"var(--text)"}}>Jessica → {selectedVehicle}</div>
                 <div style={{fontSize:11,color:"#6fcf97"}}>● Live Conversation</div>
               </div>
             </div>
             <div style={{fontSize:10,letterSpacing:"0.2em",color:gold,border:"1px solid rgba(201,168,76,0.3)",borderRadius:3,padding:"4px 10px",textTransform:"uppercase"}}>New Lead</div>
           </div>
-          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:20,minHeight:360,maxHeight:460,overflowY:"auto",display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:20,minHeight:360,maxHeight:460,overflowY:"auto",display:"flex",flexDirection:"column",gap:16}}>
             {messages.map((m,i)=>(
               <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
                 {m.role==="assistant" && <JessicaAvatar size={30} />}
-                <div style={{maxWidth:"76%",background:m.role==="user"?"rgba(201,168,76,0.12)":"#0d0c0a",border:`1px solid ${m.role==="user"?"rgba(201,168,76,0.3)":"rgba(201,168,76,0.12)"}`,borderRadius:m.role==="user"?"10px 10px 3px 10px":"10px 10px 10px 3px",padding:"11px 15px",fontSize:14,lineHeight:1.65,color:m.role==="user"?gold:"#e8dcc8"}}>
+                <div style={{maxWidth:"76%",background:m.role==="user"?"rgba(201,168,76,0.12)":"var(--bg)",border:`1px solid ${m.role==="user"?"rgba(201,168,76,0.3)":"rgba(201,168,76,0.12)"}`,borderRadius:m.role==="user"?"10px 10px 3px 10px":"10px 10px 10px 3px",padding:"11px 15px",fontSize:14,lineHeight:1.65,color:m.role==="user"?gold:"var(--text)"}}>
                   {m.role==="assistant" && <div style={{fontSize:9,letterSpacing:"0.25em",color:gold,marginBottom:5,textTransform:"uppercase"}}>Jessica</div>}
                   {m.content}
                 </div>
@@ -256,7 +275,7 @@ function AgentView() {
             {loading && (
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <JessicaAvatar size={30} />
-                <div style={{display:"flex",gap:5,padding:"11px 15px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.12)",borderRadius:"10px 10px 10px 3px"}}>
+                <div style={{display:"flex",gap:5,padding:"11px 15px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.12)",borderRadius:"10px 10px 10px 3px"}}>
                   {[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:gold,animation:`fadeUp 1.2s ease-in-out ${i*0.2}s infinite`,opacity:0.6}} />)}
                 </div>
               </div>
@@ -265,10 +284,10 @@ function AgentView() {
             <div ref={bottomRef} />
           </div>
           <div style={{display:"flex",gap:10}}>
-            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Reply as the customer…" style={{flex:1,padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14,fontFamily:"'Jost',sans-serif",fontWeight:300}} />
-            <button onClick={send} disabled={loading||!input.trim()} style={{padding:"11px 22px",background:loading||!input.trim()?"#1a1714":"rgba(201,168,76,0.18)",border:`1px solid ${loading||!input.trim()?"rgba(201,168,76,0.15)":"rgba(201,168,76,0.5)"}`,borderRadius:3,color:loading||!input.trim()?"#554f47":gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:loading||!input.trim()?"not-allowed":"pointer"}}>Send</button>
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Reply as the customer…" style={{flex:1,padding:"11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:14,fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+            <button onClick={send} disabled={loading||!input.trim()} style={{padding:"11px 22px",background:loading||!input.trim()?"var(--surface)":"rgba(201,168,76,0.18)",border:`1px solid ${loading||!input.trim()?"rgba(201,168,76,0.15)":"rgba(201,168,76,0.5)"}`,borderRadius:3,color:loading||!input.trim()?"var(--dim2)":gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:loading||!input.trim()?"not-allowed":"pointer"}}>Send</button>
           </div>
-          <div style={{fontSize:11,color:"#554f47",textAlign:"center"}}>Type as the customer to test Jessica's responses</div>
+          <div style={{fontSize:11,color:"var(--dim2)",textAlign:"center"}}>Type as the customer to test Jessica's responses</div>
         </div>
       )}
     </div>
@@ -315,23 +334,23 @@ function EmailDrafter({client, onClose}) {
 
   return (
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.3)",borderRadius:8,width:"100%",maxWidth:620,maxHeight:"85vh",overflow:"auto"}}>
+      <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.3)",borderRadius:8,width:"100%",maxWidth:620,maxHeight:"85vh",overflow:"auto"}}>
         
         {/* Header */}
         <div style={{padding:"20px 24px",borderBottom:"1px solid rgba(201,168,76,0.15)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>AI Email Draft</div>
-            <div style={{fontSize:16,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>
+            <div style={{fontSize:16,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>
               {client.first_name} {client.last_name} — {client.vehicle_of_interest||"Vehicle Enquiry"}
             </div>
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#7a6d5a",fontSize:18,cursor:"pointer",padding:"4px 8px"}}>✕</button>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:18,cursor:"pointer",padding:"4px 8px"}}>✕</button>
         </div>
 
         <div style={{padding:24}}>
           {status === "idle" && !draft && (
             <div style={{textAlign:"center",padding:"32px 0"}}>
-              <div style={{fontSize:14,color:"#8a7d6a",marginBottom:24,lineHeight:1.7}}>
+              <div style={{fontSize:14,color:"var(--muted)",marginBottom:24,lineHeight:1.7}}>
                 Jessica will draft a personalised first response email for {client.first_name} based on their vehicle interest and lead details. Review it before sending.
               </div>
               <button onClick={generateDraft} style={{padding:"12px 32px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:4,color:gold,fontSize:12,letterSpacing:"0.25em",textTransform:"uppercase",cursor:"pointer"}}>
@@ -345,7 +364,7 @@ function EmailDrafter({client, onClose}) {
               <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:16}}>
                 {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:gold,animation:`fadeUp 1.2s ease-in-out ${i*0.2}s infinite`,opacity:0.6}} />)}
               </div>
-              <div style={{fontSize:13,color:"#8a7d6a"}}>Jessica is drafting your email…</div>
+              <div style={{fontSize:13,color:"var(--muted)"}}>Jessica is drafting your email…</div>
             </div>
           )}
 
@@ -360,9 +379,9 @@ function EmailDrafter({client, onClose}) {
               {/* Subject */}
               <div style={{marginBottom:20}}>
                 <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Subject Line</div>
-                <div style={{padding:"12px 16px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,fontSize:14,color:"#e8dcc8",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                <div style={{padding:"12px 16px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,fontSize:14,color:"var(--text)",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
                   <span>{draft.subject}</span>
-                  <button onClick={()=>copyToClipboard(draft.subject)} style={{background:"none",border:"none",color:"#7a6d5a",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",letterSpacing:"0.1em"}}>COPY</button>
+                  <button onClick={()=>copyToClipboard(draft.subject)} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",letterSpacing:"0.1em"}}>COPY</button>
                 </div>
               </div>
 
@@ -373,14 +392,14 @@ function EmailDrafter({client, onClose}) {
                   value={draft.body}
                   onChange={e=>setDraft({...draft,body:e.target.value})}
                   rows={10}
-                  style={{width:"100%",padding:"14px 16px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,color:"#e8dcc8",fontSize:14,lineHeight:1.8,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}}
+                  style={{width:"100%",padding:"14px 16px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,color:"var(--text)",fontSize:14,lineHeight:1.8,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}}
                 />
-                <div style={{fontSize:11,color:"#554f47",marginTop:6}}>You can edit the draft above before sending.</div>
+                <div style={{fontSize:11,color:"var(--dim2)",marginTop:6}}>You can edit the draft above before sending.</div>
               </div>
 
               {/* Actions */}
               <div style={{display:"flex",gap:10,justifyContent:"flex-end",flexWrap:"wrap"}}>
-                <button onClick={generateDraft} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>
+                <button onClick={generateDraft} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:4,color:"var(--muted2)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>
                   ↺ Regenerate
                 </button>
                 <button onClick={()=>copyToClipboard(draft.body)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(201,168,76,0.3)",borderRadius:4,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>
@@ -406,13 +425,13 @@ function Setup() {
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:520,textAlign:"center"}}>
         <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:16}}>Setup Required</div>
-        <h1 style={{fontSize:34,color:"#e8dcc8",marginBottom:16}}>Connect Your Database</h1>
-        <p style={{fontSize:14,color:"#7a6d5a",lineHeight:1.8,marginBottom:28}}>
+        <h1 style={{fontSize:34,color:"var(--text)",marginBottom:16}}>Connect Your Database</h1>
+        <p style={{fontSize:14,color:"var(--muted2)",lineHeight:1.8,marginBottom:28}}>
           Open index.html in CotEditor and replace the two placeholder values with your Supabase credentials, then redeploy.
         </p>
         <div style={{padding:"20px 24px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.25)",borderRadius:4,textAlign:"left",marginBottom:24}}>
           <div style={{fontSize:10,color:gold,letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:12}}>Run this SQL in Supabase first:</div>
-          <pre style={{fontSize:11,color:"#8a7d6a",lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"monospace"}}>{`create table clients (
+          <pre style={{fontSize:11,color:"var(--muted)",lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"monospace"}}>{`create table clients (
   id uuid default gen_random_uuid() primary key,
   created_at timestamptz default now(),
   first_name text, last_name text,
@@ -491,14 +510,14 @@ function ClientForm({initial, onSave, onCancel, saving}) {
       <GLine label="Notes" />
       <div style={{marginBottom:24}}>
         <textarea value={f.notes} onChange={e=>s("notes",e.target.value)} placeholder="Notes about this client or deal…" rows={4}
-          style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300,lineHeight:1.7}} />
+          style={{width:"100%",padding:"11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:14,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300,lineHeight:1.7}} />
       </div>
 
       <GLine label="Trade-In Vehicle" />
       <div style={{marginBottom:24}}>
         <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:8}}>VIN Decoder — Auto-Fill</div>
         <div style={{display:"flex",gap:8,marginBottom:14}}>
-          <input value={f.trade_vin||''} onChange={e=>s("trade_vin",e.target.value.toUpperCase())} maxLength={17} placeholder="Enter 17-character VIN (optional)..." style={{flex:1,padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,letterSpacing:"0.05em",fontFamily:"monospace"}} />
+          <input value={f.trade_vin||''} onChange={e=>s("trade_vin",e.target.value.toUpperCase())} maxLength={17} placeholder="Enter 17-character VIN (optional)..." style={{flex:1,padding:"11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13,letterSpacing:"0.05em",fontFamily:"monospace"}} />
           <button type="button" onClick={async()=>{
             if(!f.trade_vin||f.trade_vin.length!==17)return;
             try{
@@ -514,7 +533,7 @@ function ClientForm({initial, onSave, onCancel, saving}) {
           {[["Year","trade_year"],["Make","trade_make"],["Model","trade_model"],["Trim","trade_trim"],["Mileage","trade_mileage"]].map(([lbl,key])=>(
             <div key={key}>
               <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:5,fontWeight:500}}>{lbl}</div>
-              <input value={f[key]||''} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14}} />
+              <input value={f[key]||''} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:14}} />
             </div>
           ))}
         </div>
@@ -523,7 +542,7 @@ function ClientForm({initial, onSave, onCancel, saving}) {
             <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:8,fontWeight:500}}>Condition</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {["Excellent","Good","Fair","Poor"].map(c=>(
-                <button type="button" key={c} onClick={()=>s("trade_condition",c)} style={{padding:"7px 12px",background:f.trade_condition===c?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_condition===c?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_condition===c?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{c}</button>
+                <button type="button" key={c} onClick={()=>s("trade_condition",c)} style={{padding:"7px 12px",background:f.trade_condition===c?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_condition===c?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_condition===c?gold:"var(--muted)",fontSize:11,cursor:"pointer"}}>{c}</button>
               ))}
             </div>
           </div>
@@ -531,7 +550,7 @@ function ClientForm({initial, onSave, onCancel, saving}) {
             <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:8,fontWeight:500}}>Accident History</div>
             <div style={{display:"flex",gap:6}}>
               {["No","Yes","Unknown"].map(v=>(
-                <button type="button" key={v} onClick={()=>s("trade_accidents",v)} style={{padding:"7px 12px",background:f.trade_accidents===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_accidents===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_accidents===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+                <button type="button" key={v} onClick={()=>s("trade_accidents",v)} style={{padding:"7px 12px",background:f.trade_accidents===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_accidents===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_accidents===v?gold:"var(--muted)",fontSize:11,cursor:"pointer"}}>{v}</button>
               ))}
             </div>
           </div>
@@ -540,18 +559,18 @@ function ClientForm({initial, onSave, onCancel, saving}) {
           <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:8,fontWeight:500}}>Previous Owners</div>
           <div style={{display:"flex",gap:6}}>
             {["1","2","3+"].map(v=>(
-              <button type="button" key={v} onClick={()=>s("trade_owners",v)} style={{padding:"7px 12px",background:f.trade_owners===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_owners===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_owners===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+              <button type="button" key={v} onClick={()=>s("trade_owners",v)} style={{padding:"7px 12px",background:f.trade_owners===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.trade_owners===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:f.trade_owners===v?gold:"var(--muted)",fontSize:11,cursor:"pointer"}}>{v}</button>
             ))}
           </div>
         </div>
         <div>
           <div style={{fontSize:9,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:5,fontWeight:500}}>Trade Notes</div>
-          <textarea value={f.trade_notes||''} onChange={e=>s("trade_notes",e.target.value)} rows={2} placeholder="Carfax notes, condition details, modifications..." style={{width:"100%",padding:"11px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"#e8dcc8",fontSize:14,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300,lineHeight:1.7}} />
+          <textarea value={f.trade_notes||''} onChange={e=>s("trade_notes",e.target.value)} rows={2} placeholder="Carfax notes, condition details, modifications..." style={{width:"100%",padding:"11px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:14,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300,lineHeight:1.7}} />
         </div>
       </div>
 
       <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
-        <button onClick={onCancel} style={{padding:"11px 24px",background:"transparent",border:"1px solid rgba(255,255,255,0.08)",borderRadius:3,color:"#7a6d5a",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase"}}>Cancel</button>
+        <button onClick={onCancel} style={{padding:"11px 24px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--muted2)",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase"}}>Cancel</button>
         <button onClick={()=>onSave(f)} disabled={saving} style={{padding:"11px 32px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase"}}>
           {saving ? "Saving…" : "Save Client"}
         </button>
@@ -564,29 +583,29 @@ function ClientForm({initial, onSave, onCancel, saving}) {
 function Card({client, onClick}) {
   const ini = `${(client.first_name||"?")[0]}${(client.last_name||"?")[0]}`.toUpperCase();
   return (
-    <div onClick={onClick} className="fu" style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:"18px 20px",cursor:"pointer",marginBottom:8,transition:"border-color 0.2s,background 0.2s"}}
-      onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.45)";e.currentTarget.style.background="#201e1a";}}
-      onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.2)";e.currentTarget.style.background="#1a1714";}}>
+    <div onClick={onClick} className="fu" style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:"18px 20px",cursor:"pointer",marginBottom:8,transition:"border-color 0.2s,background 0.2s"}}
+      onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.45)";e.currentTarget.style.background="var(--surface-hover)";}}
+      onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.2)";e.currentTarget.style.background="var(--surface)";}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
           <div style={{width:38,height:38,borderRadius:"50%",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>
             {ini}
           </div>
           <div>
-            <div style={{fontSize:16,fontFamily:"'Cormorant Garamond',serif",color:"#e8dcc8",marginBottom:3}}>
+            <div style={{fontSize:16,fontFamily:"'Cormorant Garamond',serif",color:"var(--text)",marginBottom:3}}>
               {client.first_name} {client.last_name}
-              {client.co_buyer_first && <span style={{fontSize:13,color:"#7a6d5a",marginLeft:8}}>+ {client.co_buyer_first} {client.co_buyer_last}</span>}
+              {client.co_buyer_first && <span style={{fontSize:13,color:"var(--muted2)",marginLeft:8}}>+ {client.co_buyer_first} {client.co_buyer_last}</span>}
             </div>
-            <div style={{fontSize:12,color:"#7a6d5a"}}>
+            <div style={{fontSize:12,color:"var(--muted2)"}}>
               {client.cell && <span>{client.cell}</span>}
               {client.primary_email && <span style={{marginLeft:12}}>{client.primary_email}</span>}
             </div>
-            {client.vehicle_of_interest && <div style={{fontSize:12,color:"#8a7d6a",marginTop:4,fontStyle:"italic",fontFamily:"'Cormorant Garamond',serif"}}>{client.vehicle_of_interest}</div>}
+            {client.vehicle_of_interest && <div style={{fontSize:12,color:"var(--muted)",marginTop:4,fontStyle:"italic",fontFamily:"'Cormorant Garamond',serif"}}>{client.vehicle_of_interest}</div>}
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
           <Badge stage={client.stage} />
-          {client.lead_source && <div style={{fontSize:10,color:"#4a4038",letterSpacing:"0.15em",textTransform:"uppercase"}}>{client.lead_source}</div>}
+          {client.lead_source && <div style={{fontSize:10,color:"var(--dim3)",letterSpacing:"0.15em",textTransform:"uppercase"}}>{client.lead_source}</div>}
         </div>
       </div>
     </div>
@@ -613,8 +632,8 @@ function Detail({client, onEdit, onBack, onDelete}) {
     if (!value) return null;
     return (
       <div style={{display:"flex",justifyContent:"space-between",paddingBottom:10,marginBottom:10,borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-        <span style={{fontSize:11,color:"#7a6d5a",letterSpacing:"0.15em",textTransform:"uppercase"}}>{label}</span>
-        <span style={{fontSize:13,color:"#c8bfa8",textAlign:"right",maxWidth:"60%"}}>{value}</span>
+        <span style={{fontSize:11,color:"var(--muted2)",letterSpacing:"0.15em",textTransform:"uppercase"}}>{label}</span>
+        <span style={{fontSize:13,color:"var(--text-dim)",textAlign:"right",maxWidth:"60%"}}>{value}</span>
       </div>
     );
   }
@@ -622,7 +641,7 @@ function Detail({client, onEdit, onBack, onDelete}) {
     <div style={{maxWidth:680,paddingBottom:60}}>
       {showEmail && <EmailDrafter client={client} onClose={()=>setShowEmail(false)} />}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:32}}>
-        <button onClick={onBack} style={{background:"none",border:"none",color:"#6a5d4a",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer"}}>← Back</button>
+        <button onClick={onBack} style={{background:"none",border:"none",color:"var(--dim)",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer"}}>← Back</button>
         <div style={{display:"flex",gap:10}}>
           <button onClick={()=>setShowEmail(true)} style={{padding:"8px 20px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>✦ Draft Email</button>
           <button onClick={onEdit} style={{padding:"8px 20px",background:"transparent",border:"1px solid rgba(184,151,90,0.3)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Edit</button>
@@ -634,10 +653,10 @@ function Detail({client, onEdit, onBack, onDelete}) {
       </div>
       <div style={{marginBottom:28}}>
         <div style={{display:"flex",alignItems:"baseline",gap:16,marginBottom:6}}>
-          <h1 style={{fontSize:34,color:"#e8dcc8"}}>{client.first_name} {client.last_name}</h1>
+          <h1 style={{fontSize:34,color:"var(--text)"}}>{client.first_name} {client.last_name}</h1>
           <Badge stage={client.stage} />
         </div>
-        {client.vehicle_of_interest && <div style={{fontSize:18,color:"#8a7d6a",fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic"}}>{client.vehicle_of_interest}</div>}
+        {client.vehicle_of_interest && <div style={{fontSize:18,color:"var(--muted)",fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic"}}>{client.vehicle_of_interest}</div>}
       </div>
       <GLine label="Contact" />
       <div style={{marginBottom:24}}>
@@ -675,8 +694,8 @@ function Detail({client, onEdit, onBack, onDelete}) {
       <GLine label="Preferences" />
       <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap"}}>
         {[["Do Not Call",client.do_not_call],["Do Not Text",client.do_not_text],["Do Not Email",client.do_not_email]].map(([lbl,val])=>(
-          <div key={lbl} style={{padding:"8px 14px",background:val?"rgba(252,165,165,0.06)":"rgba(255,255,255,0.02)",border:`1px solid ${val?"rgba(252,165,165,0.25)":"rgba(255,255,255,0.06)"}`,borderRadius:3}}>
-            <span style={{fontSize:11,color:val?"#fca5a5":"#4a4038",letterSpacing:"0.12em",textTransform:"uppercase"}}>{lbl}: {val?"Yes":"No"}</span>
+          <div key={lbl} style={{padding:"8px 14px",background:val?"rgba(252,165,165,0.06)":"var(--w02)",border:`1px solid ${val?"rgba(252,165,165,0.25)":"var(--w06)"}`,borderRadius:3}}>
+            <span style={{fontSize:11,color:val?"#fca5a5":"var(--dim3)",letterSpacing:"0.12em",textTransform:"uppercase"}}>{lbl}: {val?"Yes":"No"}</span>
           </div>
         ))}
       </div>
@@ -686,15 +705,15 @@ function Detail({client, onEdit, onBack, onDelete}) {
           {invMatches.map((v,i) => (
             <div key={i} style={{padding:"10px 14px",background:"rgba(201,168,76,0.04)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
-                <div style={{fontSize:13,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</div>
-                <div style={{fontSize:11,color:"#8a7d6a"}}>{v.color}{v.mileage?` · ${Number(v.mileage).toLocaleString()} mi`:''}{v.store?` · ${v.store}`:''}</div>
+                <div style={{fontSize:13,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</div>
+                <div style={{fontSize:11,color:"var(--muted)"}}>{v.color}{v.mileage?` · ${Number(v.mileage).toLocaleString()} mi`:''}{v.store?` · ${v.store}`:''}</div>
               </div>
               {v.price && <div style={{fontSize:15,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price||0).toLocaleString()}</div>}
             </div>
           ))}
         </div>
       </>}
-      {client.notes && <><GLine label="Notes" /><div style={{padding:"16px 18px",background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:4,fontSize:14,color:"#8a7d6a",lineHeight:1.8}}>{client.notes}</div></>}
+      {client.notes && <><GLine label="Notes" /><div style={{padding:"16px 18px",background:"var(--w02)",border:"1px solid rgba(255,255,255,0.05)",borderRadius:4,fontSize:14,color:"var(--muted)",lineHeight:1.8}}>{client.notes}</div></>}
     </div>
   );
 }
@@ -721,22 +740,22 @@ function DashboardView({clients, onFilterStage, onFilterSource, onSelectClient})
   const vMap = {}; clients.forEach(c=>{if(c.vehicle_of_interest){const k=c.vehicle_of_interest.split(" ").slice(0,3).join(" ");vMap[k]=(vMap[k]||0)+1;}});
   const topV = Object.entries(vMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const M = ({label,value,sub,color})=>(
-    <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:"18px 20px"}}>
-      <div style={{fontSize:9,letterSpacing:"0.35em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:6}}>{label}</div>
+    <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:"18px 20px"}}>
+      <div style={{fontSize:9,letterSpacing:"0.35em",color:"var(--muted)",textTransform:"uppercase",marginBottom:6}}>{label}</div>
       <div style={{fontSize:28,fontFamily:"'Cormorant Garamond',serif",color:color||gold,lineHeight:1}}>{value}</div>
-      {sub&&<div style={{fontSize:10,color:"#554f47",marginTop:4}}>{sub}</div>}
+      {sub&&<div style={{fontSize:10,color:"var(--dim2)",marginTop:4}}>{sub}</div>}
     </div>
   );
   return (
     <div style={{maxWidth:880}}>
       <div style={{marginBottom:24}}>
         <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Overview</div>
-        <h1 style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Dashboard</h1>
+        <h1 style={{fontSize:28,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Dashboard</h1>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2,marginBottom:2}}>
         <M label="Total Leads" value={total} sub="all time" />
         <M label="Closing Rate" value={rate+"%"} sub={closed+" of "+total+" closed"} />
-        <M label="Pipeline Value" value={"$"+Math.round(pipeline/1000)+"k"} sub="est. negotiating" color="#e8dcc8" />
+        <M label="Pipeline Value" value={"$"+Math.round(pipeline/1000)+"k"} sub="est. negotiating" color="var(--text)" />
         <M label="Cold Leads" value={cold.length} sub="5+ days no contact" color={cold.length>0?"#fca5a5":gold} />
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2,marginBottom:16}}>
@@ -746,58 +765,58 @@ function DashboardView({clients, onFilterStage, onFilterSource, onSelectClient})
         <M label="Jessica Convos" value={convCount} sub="AI conversations" color="#6fcf97" />
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2,marginBottom:2}}>
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Pipeline by Stage</div>
           {STAGES.map(s=>{const n=byStage[s]||0;const p=total>0?Math.round((n/total)*100):0;const ss=STAGE_STYLE[s];return(
             <div key={s} onClick={()=>onFilterStage&&onFilterStage(s)} style={{marginBottom:8,cursor:"pointer",padding:"4px 6px",borderRadius:3,transition:"background 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+              onMouseEnter={e=>e.currentTarget.style.background="var(--w03)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                 <span style={{fontSize:11,color:ss.color,textTransform:"uppercase",letterSpacing:"0.1em"}}>{s}</span>
-                <span style={{fontSize:11,color:"#8a7d6a"}}>{n}</span>
+                <span style={{fontSize:11,color:"var(--muted)"}}>{n}</span>
               </div>
-              <div style={{height:2,background:"rgba(255,255,255,0.05)",borderRadius:1}}>
+              <div style={{height:2,background:"var(--w05)",borderRadius:1}}>
                 <div style={{height:2,width:p+"%",background:ss.color,borderRadius:1,opacity:0.7}} />
               </div>
             </div>
           );})}
         </div>
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Top Lead Sources</div>
-          {topSrc.length===0?<div style={{color:"#554f47",fontSize:12}}>No data yet</div>:topSrc.map(([s,n])=>(
+          {topSrc.length===0?<div style={{color:"var(--dim2)",fontSize:12}}>No data yet</div>:topSrc.map(([s,n])=>(
             <div key={s} onClick={()=>onFilterSource&&onFilterSource(s)} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer",padding:"6px 6px",borderRadius:3,transition:"background 0.15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,0.05)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <span style={{fontSize:12,color:"#e8dcc8"}}>{s}</span>
+              <span style={{fontSize:12,color:"var(--text)"}}>{s}</span>
               <span style={{fontSize:12,color:gold}}>{n}</span>
             </div>
           ))}
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:12}}>Most Enquired Vehicles</div>
-          {topV.length===0?<div style={{color:"#554f47",fontSize:12}}>No data yet</div>:topV.map(([v,n])=>(
+          {topV.length===0?<div style={{color:"var(--dim2)",fontSize:12}}>No data yet</div>:topV.map(([v,n])=>(
             <div key={v} onClick={()=>onFilterSource&&onFilterSource(v)} style={{display:"flex",justifyContent:"space-between",marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer",padding:"6px 6px",borderRadius:3,transition:"background 0.15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,0.05)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <span style={{fontSize:12,color:"#e8dcc8"}}>{v}</span>
+              <span style={{fontSize:12,color:"var(--text)"}}>{v}</span>
               <span style={{fontSize:12,color:gold}}>{n}</span>
             </div>
           ))}
         </div>
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:18}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:"#fca5a5",textTransform:"uppercase",marginBottom:12}}>Cold Leads</div>
-          {cold.length===0?<div style={{color:"#554f47",fontSize:12}}>No cold leads!</div>:cold.slice(0,5).map(c=>{
+          {cold.length===0?<div style={{color:"var(--dim2)",fontSize:12}}>No cold leads!</div>:cold.slice(0,5).map(c=>{
             const d=Math.floor((now-new Date(c.created_at))/86400000);
             return(<div key={c.id} onClick={()=>onSelectClient&&onSelectClient(c)} style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer",padding:"6px 6px",borderRadius:3,transition:"background 0.15s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(252,165,165,0.05)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:12,color:"#e8dcc8"}}>{c.first_name} {c.last_name}</span>
+                <span style={{fontSize:12,color:"var(--text)"}}>{c.first_name} {c.last_name}</span>
                 <span style={{fontSize:11,color:"#fca5a5"}}>{d}d</span>
               </div>
-              <div style={{fontSize:11,color:"#8a7d6a"}}>{c.vehicle_of_interest||"—"}</div>
+              <div style={{fontSize:11,color:"var(--muted)"}}>{c.vehicle_of_interest||"—"}</div>
             </div>);
           })}
         </div>
@@ -826,52 +845,52 @@ function JessicaInbox({onPushToClient}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:24}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>AI Agent</div>
-          <h1 style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Jessica\'s Inbox</h1>
+          <h1 style={{fontSize:28,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Jessica\'s Inbox</h1>
         </div>
         <div style={{display:"flex",gap:12}}>
           <span style={{fontSize:12,color:"#6fcf97"}}>Active: {convos.filter(c=>c.status==="active").length}</span>
-          <span style={{fontSize:12,color:"#8a7d6a"}}>Total: {convos.length}</span>
+          <span style={{fontSize:12,color:"var(--muted)"}}>Total: {convos.length}</span>
         </div>
       </div>
-      {loading?<div style={{color:"#554f47",padding:40,textAlign:"center"}}>Loading...</div>:convos.length===0?(
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:40,textAlign:"center",color:"#554f47",fontSize:13}}>No conversations yet. Start a chat with Jessica in the AI Agent tab.</div>
+      {loading?<div style={{color:"var(--dim2)",padding:40,textAlign:"center"}}>Loading...</div>:convos.length===0?(
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:40,textAlign:"center",color:"var(--dim2)",fontSize:13}}>No conversations yet. Start a chat with Jessica in the AI Agent tab.</div>
       ):(
         <div style={{display:"grid",gridTemplateColumns:selected?"1fr 1fr":"1fr",gap:2}}>
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             {convos.map(c=>(
-              <div key={c.id} onClick={()=>setSelected(c)} style={{background:selected&&selected.id===c.id?"rgba(201,168,76,0.08)":"#1a1714",border:"1px solid "+(selected&&selected.id===c.id?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.1)"),borderRadius:4,padding:"14px 18px",cursor:"pointer"}}>
+              <div key={c.id} onClick={()=>setSelected(c)} style={{background:selected&&selected.id===c.id?"rgba(201,168,76,0.08)":"var(--surface)",border:"1px solid "+(selected&&selected.id===c.id?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.1)"),borderRadius:4,padding:"14px 18px",cursor:"pointer"}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                  <span style={{fontSize:13,color:"#e8dcc8"}}>{c.lead_name||"Unknown Lead"}</span>
+                  <span style={{fontSize:13,color:"var(--text)"}}>{c.lead_name||"Unknown Lead"}</span>
                   <div style={{display:"flex",gap:6}}>
                     {c.converted_to_client&&<span style={{fontSize:8,color:"#6fcf97",border:"1px solid rgba(110,231,183,0.3)",padding:"2px 5px",borderRadius:2}}>ADDED</span>}
                     {c.handoff_triggered&&<span style={{fontSize:8,color:gold,border:"1px solid rgba(201,168,76,0.3)",padding:"2px 5px",borderRadius:2}}>HANDOFF</span>}
-                    <span style={{fontSize:10,color:"#554f47"}}>{new Date(c.updated_at).toLocaleDateString()}</span>
+                    <span style={{fontSize:10,color:"var(--dim2)"}}>{new Date(c.updated_at).toLocaleDateString()}</span>
                   </div>
                 </div>
                 <div style={{fontSize:11,color:gold,marginBottom:2}}>{c.vehicle_interest||"Vehicle not specified"}</div>
-                <div style={{fontSize:11,color:"#8a7d6a"}}>{c.summary||"Conversation in progress..."}</div>
+                <div style={{fontSize:11,color:"var(--muted)"}}>{c.summary||"Conversation in progress..."}</div>
               </div>
             ))}
           </div>
           {selected&&(
-            <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:18,position:"sticky",top:20,maxHeight:"80vh",overflow:"auto"}}>
+            <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:18,position:"sticky",top:20,maxHeight:"80vh",overflow:"auto"}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
                 <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase"}}>Conversation Detail</div>
-                <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"#7a6d5a",fontSize:16,cursor:"pointer"}}>x</button>
+                <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:16,cursor:"pointer"}}>x</button>
               </div>
-              <div style={{marginBottom:14,padding:12,background:"#0d0c0a",borderRadius:3,border:"1px solid rgba(201,168,76,0.1)"}}>
+              <div style={{marginBottom:14,padding:12,background:"var(--bg)",borderRadius:3,border:"1px solid rgba(201,168,76,0.1)"}}>
                 <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Info Gathered</div>
                 {[["Name",selected.lead_name],["Phone",selected.lead_phone],["Email",selected.lead_email],["Vehicle",selected.vehicle_interest],["Budget",selected.lead_budget],["Timeline",selected.lead_timeline]].map(([l,v])=>v?(
                   <div key={l} style={{display:"flex",gap:10,marginBottom:4}}>
-                    <span style={{fontSize:10,color:"#8a7d6a",minWidth:55}}>{l}</span>
-                    <span style={{fontSize:11,color:"#e8dcc8"}}>{v}</span>
+                    <span style={{fontSize:10,color:"var(--muted)",minWidth:55}}>{l}</span>
+                    <span style={{fontSize:11,color:"var(--text)"}}>{v}</span>
                   </div>
                 ):null)}
               </div>
               <div style={{marginBottom:14,maxHeight:250,overflow:"auto",display:"flex",flexDirection:"column",gap:6}}>
                 {(selected.messages||[]).map((m,i)=>(
                   <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
-                    <div style={{maxWidth:"80%",padding:"7px 11px",background:m.role==="user"?"rgba(201,168,76,0.1)":"#0d0c0a",border:"1px solid "+(m.role==="user"?"rgba(201,168,76,0.25)":"rgba(255,255,255,0.06)"),borderRadius:m.role==="user"?"8px 8px 2px 8px":"8px 8px 8px 2px",fontSize:11,color:m.role==="user"?gold:"#e8dcc8",lineHeight:1.5}}>
+                    <div style={{maxWidth:"80%",padding:"7px 11px",background:m.role==="user"?"rgba(201,168,76,0.1)":"var(--bg)",border:"1px solid "+(m.role==="user"?"rgba(201,168,76,0.25)":"var(--w06)"),borderRadius:m.role==="user"?"8px 8px 2px 8px":"8px 8px 8px 2px",fontSize:11,color:m.role==="user"?gold:"var(--text)",lineHeight:1.5}}>
                       {m.content}
                     </div>
                   </div>
@@ -918,41 +937,41 @@ function FollowUpsView({clients}) {
     <div style={{maxWidth:800}}>
       <div style={{marginBottom:24}}>
         <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Sequences</div>
-        <h1 style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Follow-Ups</h1>
+        <h1 style={{fontSize:28,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Follow-Ups</h1>
       </div>
       {leads.length===0?(
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:40,textAlign:"center"}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:40,textAlign:"center"}}>
           <div style={{fontSize:20,marginBottom:6}}>All caught up!</div>
-          <div style={{fontSize:12,color:"#554f47"}}>No leads need follow-up right now</div>
+          <div style={{fontSize:12,color:"var(--dim2)"}}>No leads need follow-up right now</div>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
           {leads.map(c=>(
-            <div key={c.id} style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"14px 18px"}}>
+            <div key={c.id} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                    <span style={{fontSize:14,color:"#e8dcc8"}}>{c.first_name} {c.last_name}</span>
+                    <span style={{fontSize:14,color:"var(--text)"}}>{c.first_name} {c.last_name}</span>
                     <span style={{fontSize:8,color:c.urgency.color,border:"1px solid "+c.urgency.color+"44",padding:"2px 6px",borderRadius:2,textTransform:"uppercase",letterSpacing:"0.15em"}}>{c.urgency.label}</span>
                   </div>
                   <div style={{fontSize:11,color:gold,marginBottom:2}}>{c.vehicle_of_interest||"—"}</div>
-                  <div style={{fontSize:10,color:"#554f47"}}>{c.days} days since added</div>
+                  <div style={{fontSize:10,color:"var(--dim2)"}}>{c.days} days since added</div>
                 </div>
                 <button onClick={()=>gen(c)} style={{padding:"7px 14px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>Draft Email</button>
               </div>
               {drafting&&drafting.id===c.id&&(
                 <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(201,168,76,0.1)"}}>
                   {generating?(
-                    <div style={{display:"flex",gap:5,alignItems:"center",color:"#8a7d6a",fontSize:12}}>
+                    <div style={{display:"flex",gap:5,alignItems:"center",color:"var(--muted)",fontSize:12}}>
                       {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:gold,opacity:0.6,animation:"fadeUp 1.2s ease-in-out "+(i*0.2)+"s infinite"}} />)}
                       <span style={{marginLeft:4}}>Drafting...</span>
                     </div>
                   ):draft&&(
                     <div>
-                      <div style={{marginBottom:8,padding:"8px 10px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,fontSize:12,color:"#e8dcc8"}}>{draft.subject}</div>
-                      <textarea value={draft.body} onChange={e=>setDraft({...draft,body:e.target.value})} rows={4} style={{width:"100%",padding:"9px 10px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,color:"#e8dcc8",fontSize:12,lineHeight:1.6,resize:"vertical",fontFamily:"Jost,sans-serif",fontWeight:300,marginBottom:8}} />
+                      <div style={{marginBottom:8,padding:"8px 10px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,fontSize:12,color:"var(--text)"}}>{draft.subject}</div>
+                      <textarea value={draft.body} onChange={e=>setDraft({...draft,body:e.target.value})} rows={4} style={{width:"100%",padding:"9px 10px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3,color:"var(--text)",fontSize:12,lineHeight:1.6,resize:"vertical",fontFamily:"Jost,sans-serif",fontWeight:300,marginBottom:8}} />
                       <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
-                        <button onClick={()=>{setDrafting(null);setDraft(null);}} style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(255,255,255,0.08)",borderRadius:3,color:"#7a6d5a",fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Dismiss</button>
+                        <button onClick={()=>{setDrafting(null);setDraft(null);}} style={{padding:"6px 12px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--muted2)",fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Dismiss</button>
                         <button onClick={()=>navigator.clipboard.writeText(draft.body)} style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(201,168,76,0.25)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Copy</button>
                         <button onClick={()=>window.open("mailto:"+c.primary_email+"?subject="+encodeURIComponent(draft.subject)+"&body="+encodeURIComponent(draft.body))} style={{padding:"6px 14px",background:"rgba(201,168,76,0.12)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Open in Mail</button>
                       </div>
@@ -1086,11 +1105,11 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:20}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Inventory</div>
-          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Inventory</h1>
+          <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Inventory</h1>
         </div>
         <div style={{display:"flex",gap:10}}>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} style={{display:"none"}} />
-          <button onClick={()=>fileInputRef.current?.click()} style={{padding:"10px 18px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#8a7d6a",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>↑ Import CSV/Excel</button>
+          <button onClick={()=>fileInputRef.current?.click()} style={{padding:"10px 18px",background:"var(--w04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>↑ Import CSV/Excel</button>
           <button onClick={()=>{setForm(emptyVehicle);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Add Vehicle</button>
         </div>
       </div>
@@ -1099,7 +1118,7 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
       {vehicles.length > 0 && storeOptions.length > 1 && (
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
           {storeOptions.map(st => (
-            <button key={st} onClick={()=>setStoreFilter(st)} style={{padding:"6px 12px",background:storeFilter===st?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${storeFilter===st?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.06)"}`,borderRadius:3,color:storeFilter===st?gold:"#9a8d7a",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"}}>
+            <button key={st} onClick={()=>setStoreFilter(st)} style={{padding:"6px 12px",background:storeFilter===st?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${storeFilter===st?"rgba(201,168,76,0.45)":"var(--w06)"}`,borderRadius:3,color:storeFilter===st?gold:"var(--nav-text)",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"}}>
               {st}{st!=='All'?` (${vehicles.filter(v=>(v.store||'Unassigned')===st).length})`:''}
             </button>
           ))}
@@ -1108,49 +1127,49 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
 
       {/* CSV/Excel Import Preview */}
       {showImport && importData.length > 0 && (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.3)",borderRadius:4,padding:24,marginBottom:24}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.3)",borderRadius:4,padding:24,marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:12}}>
             <div>
               <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Import Preview</div>
-              <div style={{fontSize:13,color:"#8a7d6a"}}>{importData.length} vehicles detected</div>
+              <div style={{fontSize:13,color:"var(--muted)"}}>{importData.length} vehicles detected</div>
             </div>
             <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
               <div>
                 <div style={{fontSize:9,letterSpacing:"0.25em",color:gold,textTransform:"uppercase",marginBottom:5}}>Assign to Store</div>
-                <select value={importStore} onChange={e=>setImportStore(e.target.value)} style={{padding:"7px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:12,appearance:"none",WebkitAppearance:"none"}}>
+                <select value={importStore} onChange={e=>setImportStore(e.target.value)} style={{padding:"7px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:12,appearance:"none",WebkitAppearance:"none"}}>
                   <option value="">Use CSV store column</option>
                   {STORES.map(st=><option key={st} value={st}>{st}</option>)}
                 </select>
               </div>
-              <button onClick={()=>{setShowImport(false);setImportData([]);}} style={{padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+              <button onClick={()=>{setShowImport(false);setImportData([]);}} style={{padding:"8px 14px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted2)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
               <button onClick={doImport} style={{padding:"8px 20px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Import {importData.length} Vehicles</button>
             </div>
           </div>
           <div style={{maxHeight:260,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
             {importData.slice(0,10).map((v,i) => (
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3,fontSize:12}}>
-                <span style={{color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
-                <div style={{display:"flex",gap:14,color:"#8a7d6a"}}>
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3,fontSize:12}}>
+                <span style={{color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <div style={{display:"flex",gap:14,color:"var(--muted)"}}>
                   {v.vin && <span>VIN: {v.vin}</span>}
                   {v.price && <span style={{color:gold}}>${Number(v.price).toLocaleString()}</span>}
                   {(v.store||importStore) && <span>{v.store||importStore}</span>}
                 </div>
               </div>
             ))}
-            {importData.length > 10 && <div style={{fontSize:11,color:"#554f47",textAlign:"center",padding:8}}>…and {importData.length-10} more</div>}
+            {importData.length > 10 && <div style={{fontSize:11,color:"var(--dim2)",textAlign:"center",padding:8}}>…and {importData.length-10} more</div>}
           </div>
         </div>
       )}
 
       {/* Add/Edit Form */}
       {showAdd && (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,marginBottom:24}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,marginBottom:24}}>
           <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>{editIdx!==null?'Edit Vehicle':'New Vehicle'}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
             {[['Year','year'],['Make','make'],['Model','model'],['Trim','trim'],['Color','color'],['VIN','vin']].map(([lbl,key])=>(
               <div key={key}>
                 <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
-                <input value={form[key]} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13}} />
+                <input value={form[key]} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13}} />
               </div>
             ))}
           </div>
@@ -1158,7 +1177,7 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
             {[['Mileage','mileage'],['Current Price ($)','price'],['Previous Price ($)','oldPrice']].map(([lbl,key])=>(
               <div key={key}>
                 <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
-                <input value={form[key]} onChange={e=>s(key,e.target.value)} type="number" style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13}} />
+                <input value={form[key]} onChange={e=>s(key,e.target.value)} type="number" style={{width:"100%",padding:"9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13}} />
               </div>
             ))}
           </div>
@@ -1166,7 +1185,7 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
             <div>
               <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Store Location</div>
               <div style={{position:"relative"}}>
-                <select value={form.store} onChange={e=>s('store',e.target.value)} style={{width:"100%",padding:"9px 32px 9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:form.store?"#e8dcc8":"#7a6d5a",fontSize:13,appearance:"none",WebkitAppearance:"none"}}>
+                <select value={form.store} onChange={e=>s('store',e.target.value)} style={{width:"100%",padding:"9px 32px 9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:form.store?"var(--text)":"var(--muted2)",fontSize:13,appearance:"none",WebkitAppearance:"none"}}>
                   <option value="">Select store…</option>
                   {STORES.map(st=><option key={st} value={st}>{st}</option>)}
                 </select>
@@ -1175,11 +1194,11 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
             </div>
             <div>
               <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Notes</div>
-              <textarea value={form.notes} onChange={e=>s('notes',e.target.value)} rows={1} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+              <textarea value={form.notes} onChange={e=>s('notes',e.target.value)} rows={1} style={{width:"100%",padding:"9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
             </div>
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <button onClick={()=>{setShowAdd(false);setEditIdx(null);}} style={{padding:"9px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+            <button onClick={()=>{setShowAdd(false);setEditIdx(null);}} style={{padding:"9px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
             <button onClick={save} style={{padding:"9px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Save Vehicle</button>
           </div>
         </div>
@@ -1187,7 +1206,7 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
 
       {/* Vehicle List */}
       {filtered.length === 0 ? (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"#554f47",fontSize:13}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"var(--dim2)",fontSize:13}}>
           {vehicles.length === 0 ? "No vehicles in inventory yet — add one above or import a CSV/Excel file." : "No vehicles match the selected store filter."}
         </div>
       ) : (
@@ -1195,13 +1214,13 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
           {filtered.map((v,i)=>{
             const actualIdx = vehicles.indexOf(v);
             return (
-              <div key={v.id||i} style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}>
+              <div key={v.id||i} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:16}}>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
-                    <span style={{fontSize:15,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
-                    {v.store && <span style={{fontSize:9,color:"#8a7d6a",border:"1px solid rgba(138,125,106,0.25)",padding:"1px 6px",borderRadius:2,textTransform:"uppercase",letterSpacing:"0.12em",whiteSpace:"nowrap"}}>{v.store.replace('Pinnacle ','')}</span>}
+                    <span style={{fontSize:15,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                    {v.store && <span style={{fontSize:9,color:"var(--muted)",border:"1px solid rgba(138,125,106,0.25)",padding:"1px 6px",borderRadius:2,textTransform:"uppercase",letterSpacing:"0.12em",whiteSpace:"nowrap"}}>{v.store.replace('Pinnacle ','')}</span>}
                   </div>
-                  <div style={{fontSize:12,color:"#8a7d6a"}}>{v.color} · {v.mileage?Number(v.mileage).toLocaleString()+' mi':''} · VIN: {v.vin||'—'}</div>
+                  <div style={{fontSize:12,color:"var(--muted)"}}>{v.color} · {v.mileage?Number(v.mileage).toLocaleString()+' mi':''} · VIN: {v.vin||'—'}</div>
                 </div>
                 <div style={{textAlign:"right",minWidth:120}}>
                   <div style={{fontSize:18,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price||0).toLocaleString()}</div>
@@ -1225,13 +1244,13 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
       {/* Price Drop Notification Modal */}
       {notify && (
         <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.75)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.3)",borderRadius:8,width:"100%",maxWidth:580,maxHeight:"85vh",overflow:"auto"}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.3)",borderRadius:8,width:"100%",maxWidth:580,maxHeight:"85vh",overflow:"auto"}}>
             <div style={{padding:"20px 24px",borderBottom:"1px solid rgba(201,168,76,0.15)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Price Drop Alert</div>
-                <div style={{fontSize:15,color:"#e8dcc8"}}>{notify.year} {notify.make} {notify.model} — ${Number(notify.price).toLocaleString()}</div>
+                <div style={{fontSize:15,color:"var(--text)"}}>{notify.year} {notify.make} {notify.model} — ${Number(notify.price).toLocaleString()}</div>
               </div>
-              <button onClick={()=>{setNotify(null);setNotifyDraft(null);}} style={{background:"none",border:"none",color:"#7a6d5a",fontSize:18,cursor:"pointer"}}>✕</button>
+              <button onClick={()=>{setNotify(null);setNotifyDraft(null);}} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:18,cursor:"pointer"}}>✕</button>
             </div>
             <div style={{padding:24}}>
               {generating && (
@@ -1239,22 +1258,22 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
                   <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:12}}>
                     {[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:gold,animation:`fadeUp 1.2s ease-in-out ${i*0.2}s infinite`,opacity:0.6}} />)}
                   </div>
-                  <div style={{fontSize:13,color:"#8a7d6a"}}>Jessica is drafting your notification…</div>
+                  <div style={{fontSize:13,color:"var(--muted)"}}>Jessica is drafting your notification…</div>
                 </div>
               )}
               {notifyDraft && !generating && (
                 <div>
                   <div style={{marginBottom:16}}>
                     <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Subject</div>
-                    <div style={{padding:"11px 14px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,fontSize:14,color:"#e8dcc8"}}>{notifyDraft.subject}</div>
+                    <div style={{padding:"11px 14px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,fontSize:14,color:"var(--text)"}}>{notifyDraft.subject}</div>
                   </div>
                   <div style={{marginBottom:20}}>
                     <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Email Body</div>
-                    <textarea value={notifyDraft.body} onChange={e=>setNotifyDraft({...notifyDraft,body:e.target.value})} rows={8} style={{width:"100%",padding:"12px 14px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,lineHeight:1.7,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
-                    <div style={{fontSize:11,color:"#554f47",marginTop:5}}>Edit before sending. This goes to all clients who enquired about this vehicle.</div>
+                    <textarea value={notifyDraft.body} onChange={e=>setNotifyDraft({...notifyDraft,body:e.target.value})} rows={8} style={{width:"100%",padding:"12px 14px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13,lineHeight:1.7,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+                    <div style={{fontSize:11,color:"var(--dim2)",marginTop:5}}>Edit before sending. This goes to all clients who enquired about this vehicle.</div>
                   </div>
                   <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-                    <button onClick={()=>generatePriceDropNotification(notify)} style={{padding:"9px 18px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>↺ Regenerate</button>
+                    <button onClick={()=>generatePriceDropNotification(notify)} style={{padding:"9px 18px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>↺ Regenerate</button>
                     <button onClick={()=>{navigator.clipboard.writeText(notifyDraft.body);}} style={{padding:"9px 18px",background:"transparent",border:"1px solid rgba(201,168,76,0.3)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Copy</button>
                     <button onClick={()=>window.open(`mailto:?subject=${encodeURIComponent(notifyDraft.subject)}&body=${encodeURIComponent(notifyDraft.body)}`)} style={{padding:"9px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Open in Mail ↗</button>
                   </div>
@@ -1341,7 +1360,7 @@ Provide current market trade-in range and retail range based on real market data
     <div style={{maxWidth:680}}>
       <div style={{marginBottom:28}}>
         <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Appraisal Tool</div>
-        <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Appraisal</h1>
+        <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Appraisal</h1>
       </div>
 
       {/* Step indicators */}
@@ -1349,8 +1368,8 @@ Provide current market trade-in range and retail range based on real market data
         {[['1','Vehicle Info'],['2','History'],['3','Results']].map(([n,lbl],i)=>(
           <div key={n} style={{display:"flex",alignItems:"center",gap:0}}>
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",background:step===i+1?"rgba(201,168,76,0.12)":"transparent",border:`1px solid ${step===i+1?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.1)"}`,borderRadius:3}}>
-              <div style={{width:18,height:18,borderRadius:"50%",background:step>i?"rgba(201,168,76,0.3)":"rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:step>i?gold:"#554f47"}}>{n}</div>
-              <span style={{fontSize:11,color:step===i+1?gold:"#554f47",letterSpacing:"0.15em",textTransform:"uppercase"}}>{lbl}</span>
+              <div style={{width:18,height:18,borderRadius:"50%",background:step>i?"rgba(201,168,76,0.3)":"var(--w05)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:step>i?gold:"var(--dim2)"}}>{n}</div>
+              <span style={{fontSize:11,color:step===i+1?gold:"var(--dim2)",letterSpacing:"0.15em",textTransform:"uppercase"}}>{lbl}</span>
             </div>
             {i<2 && <div style={{width:20,height:1,background:"rgba(201,168,76,0.15)"}} />}
           </div>
@@ -1358,27 +1377,27 @@ Provide current market trade-in range and retail range based on real market data
       </div>
 
       {step===1 && (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
           <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>Vehicle Details</div>
           
           {/* VIN Decoder */}
           <div style={{marginBottom:20,padding:16,background:"rgba(201,168,76,0.04)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:3}}>
             <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:8}}>VIN Decoder — Auto-Fill</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <input value={vin} onChange={e=>setVin(e.target.value.toUpperCase())} maxLength={17} placeholder="Enter 17-character VIN..." style={{flex:1,padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,letterSpacing:"0.05em",fontFamily:"monospace"}} />
-              <button onClick={decodeVin} disabled={vinLoading} style={{padding:"9px 18px",background:vinLoading?"rgba(201,168,76,0.05)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:vinLoading?"#554f47":gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:vinLoading?"not-allowed":"pointer",whiteSpace:"nowrap"}}>
+              <input value={vin} onChange={e=>setVin(e.target.value.toUpperCase())} maxLength={17} placeholder="Enter 17-character VIN..." style={{flex:1,padding:"9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13,letterSpacing:"0.05em",fontFamily:"monospace"}} />
+              <button onClick={decodeVin} disabled={vinLoading} style={{padding:"9px 18px",background:vinLoading?"rgba(201,168,76,0.05)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:vinLoading?"var(--dim2)":gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:vinLoading?"not-allowed":"pointer",whiteSpace:"nowrap"}}>
                 {vinLoading ? "Decoding…" : "Decode ✦"}
               </button>
             </div>
             {vinError && <div style={{fontSize:11,color:"#fca5a5",marginTop:6}}>{vinError}</div>}
-            <div style={{fontSize:10,color:"#554f47",marginTop:6}}>Automatically fills Year, Make, Model, and Trim from the VIN.</div>
+            <div style={{fontSize:10,color:"var(--dim2)",marginTop:6}}>Automatically fills Year, Make, Model, and Trim from the VIN.</div>
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
             {[['Year','year'],['Make','make'],['Model','model'],['Trim Level','trim'],['Mileage','mileage'],['Customer ZIP','zip']].map(([lbl,key])=>(
               <div key={key}>
                 <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>{lbl}</div>
-                <input value={form[key]} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"9px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13}} />
+                <input value={form[key]} onChange={e=>s(key,e.target.value)} style={{width:"100%",padding:"9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13}} />
               </div>
             ))}
           </div>
@@ -1386,7 +1405,7 @@ Provide current market trade-in range and retail range based on real market data
             <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Condition</div>
             <div style={{display:"flex",gap:8}}>
               {conditions.map(c=>(
-                <button key={c} onClick={()=>s('condition',c)} style={{padding:"8px 16px",background:form.condition===c?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.condition===c?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.condition===c?gold:"#8a7d6a",fontSize:11,letterSpacing:"0.15em",cursor:"pointer"}}>{c}</button>
+                <button key={c} onClick={()=>s('condition',c)} style={{padding:"8px 16px",background:form.condition===c?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.condition===c?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.condition===c?gold:"var(--muted)",fontSize:11,letterSpacing:"0.15em",cursor:"pointer"}}>{c}</button>
               ))}
             </div>
           </div>
@@ -1397,14 +1416,14 @@ Provide current market trade-in range and retail range based on real market data
       )}
 
       {step===2 && (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24}}>
           <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:16}}>Vehicle History</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
             <div>
               <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Accident History</div>
               <div style={{display:"flex",gap:8}}>
                 {['No','Yes','Unknown'].map(v=>(
-                  <button key={v} onClick={()=>s('accidents',v)} style={{padding:"8px 14px",background:form.accidents===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.accidents===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.accidents===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+                  <button key={v} onClick={()=>s('accidents',v)} style={{padding:"8px 14px",background:form.accidents===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.accidents===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.accidents===v?gold:"var(--muted)",fontSize:11,cursor:"pointer"}}>{v}</button>
                 ))}
               </div>
             </div>
@@ -1412,18 +1431,18 @@ Provide current market trade-in range and retail range based on real market data
               <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Previous Owners</div>
               <div style={{display:"flex",gap:8}}>
                 {['1','2','3+'].map(v=>(
-                  <button key={v} onClick={()=>s('owners',v)} style={{padding:"8px 14px",background:form.owners===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.owners===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.owners===v?gold:"#8a7d6a",fontSize:11,cursor:"pointer"}}>{v}</button>
+                  <button key={v} onClick={()=>s('owners',v)} style={{padding:"8px 14px",background:form.owners===v?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.owners===v?"rgba(201,168,76,0.5)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.owners===v?gold:"var(--muted)",fontSize:11,cursor:"pointer"}}>{v}</button>
                 ))}
               </div>
             </div>
           </div>
           <div style={{marginBottom:20}}>
             <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:5}}>Carfax Notes / Additional History</div>
-            <div style={{fontSize:11,color:"#554f47",marginBottom:8}}>Ask the customer to pull their free report at carfax.com and share any relevant details here.</div>
-            <textarea value={form.carfaxNotes} onChange={e=>s('carfaxNotes',e.target.value)} rows={3} placeholder="e.g. Clean title, 2 owners, last serviced at dealer 6 months ago..." style={{width:"100%",padding:"10px 12px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+            <div style={{fontSize:11,color:"var(--dim2)",marginBottom:8}}>Ask the customer to pull their free report at carfax.com and share any relevant details here.</div>
+            <textarea value={form.carfaxNotes} onChange={e=>s('carfaxNotes',e.target.value)} rows={3} placeholder="e.g. Clean title, 2 owners, last serviced at dealer 6 months ago..." style={{width:"100%",padding:"10px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13,resize:"vertical",fontFamily:"'Jost',sans-serif",fontWeight:300}} />
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <button onClick={()=>setStep(1)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>← Back</button>
+            <button onClick={()=>setStep(1)} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>← Back</button>
             <button onClick={runAppraisal} disabled={loading} style={{padding:"10px 24px",background:loading?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:loading?"not-allowed":"pointer"}}>
               {loading ? "Appraising…" : "Run Appraisal ✦"}
             </button>
@@ -1435,24 +1454,24 @@ Provide current market trade-in range and retail range based on real market data
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {/* Value boxes */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
-            <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,textAlign:"center"}}>
-              <div style={{fontSize:9,letterSpacing:"0.4em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Trade-In Range</div>
+            <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,textAlign:"center"}}>
+              <div style={{fontSize:9,letterSpacing:"0.4em",color:"var(--muted)",textTransform:"uppercase",marginBottom:10}}>Trade-In Range</div>
               <div style={{fontSize:28,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${result.trade_in_low?.toLocaleString()} – ${result.trade_in_high?.toLocaleString()}</div>
             </div>
-            <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,textAlign:"center"}}>
-              <div style={{fontSize:9,letterSpacing:"0.4em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Retail Range</div>
-              <div style={{fontSize:28,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>${result.retail_low?.toLocaleString()} – ${result.retail_high?.toLocaleString()}</div>
+            <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:24,textAlign:"center"}}>
+              <div style={{fontSize:9,letterSpacing:"0.4em",color:"var(--muted)",textTransform:"uppercase",marginBottom:10}}>Retail Range</div>
+              <div style={{fontSize:28,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>${result.retail_low?.toLocaleString()} – ${result.retail_high?.toLocaleString()}</div>
             </div>
           </div>
 
           {/* Summary */}
-          <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:20}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:20}}>
             <div style={{fontSize:9,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:10}}>Market Analysis</div>
-            <div style={{fontSize:14,color:"#e8dcc8",lineHeight:1.7,marginBottom:14}}>{result.summary}</div>
+            <div style={{fontSize:14,color:"var(--text)",lineHeight:1.7,marginBottom:14}}>{result.summary}</div>
             {result.factors && (
               <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                 {result.factors.map((f,i)=>(
-                  <div key={i} style={{padding:"5px 12px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:20,fontSize:11,color:"#8a7d6a"}}>{f}</div>
+                  <div key={i} style={{padding:"5px 12px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:20,fontSize:11,color:"var(--muted)"}}>{f}</div>
                 ))}
               </div>
             )}
@@ -1462,12 +1481,12 @@ Provide current market trade-in range and retail range based on real market data
           {result.recommendation && (
             <div style={{background:"rgba(110,231,183,0.05)",border:"1px solid rgba(110,231,183,0.2)",borderRadius:4,padding:16}}>
               <div style={{fontSize:9,letterSpacing:"0.35em",color:"#6fcf97",textTransform:"uppercase",marginBottom:6}}>Dealer Recommendation</div>
-              <div style={{fontSize:13,color:"#e8dcc8",lineHeight:1.6}}>{result.recommendation}</div>
+              <div style={{fontSize:13,color:"var(--text)",lineHeight:1.6}}>{result.recommendation}</div>
             </div>
           )}
 
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <button onClick={()=>{setStep(1);setForm({year:'',make:'',model:'',trim:'',mileage:'',condition:'Good',accidents:'No',owners:'1',zip:'',carfaxNotes:''});setResult(null);}} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"#7a6d5a",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>New Appraisal</button>
+            <button onClick={()=>{setStep(1);setForm({year:'',make:'',model:'',trim:'',mileage:'',condition:'Good',accidents:'No',owners:'1',zip:'',carfaxNotes:''});setResult(null);}} style={{padding:"10px 20px",background:"transparent",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>New Appraisal</button>
             <button onClick={()=>window.print()} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Print Report</button>
           </div>
         </div>
@@ -1547,19 +1566,19 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Safety</div>
-          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Recall Monitor</h1>
+          <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Recall Monitor</h1>
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          {lastChecked && <span style={{fontSize:11,color:"#554f47"}}>Last checked: {new Date(lastChecked).toLocaleDateString()}</span>}
-          <button onClick={checkRecalls} disabled={checking||vehicles.length===0} style={{padding:"10px 22px",background:checking?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:checking?"#554f47":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:checking?"not-allowed":"pointer"}}>
+          {lastChecked && <span style={{fontSize:11,color:"var(--dim2)"}}>Last checked: {new Date(lastChecked).toLocaleDateString()}</span>}
+          <button onClick={checkRecalls} disabled={checking||vehicles.length===0} style={{padding:"10px 22px",background:checking?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:checking?"var(--dim2)":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:checking?"not-allowed":"pointer"}}>
             {checking ? "Checking NHTSA…" : "Run Recall Check"}
           </button>
         </div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:16}}>
-        {[[withRecalls.length,"Active Recalls","#fca5a5","rgba(252,165,165,0.2)"],[noRecalls.length,"Clear","#6fcf97","rgba(110,231,183,0.15)"],[unchecked.length,"Not Checked","#8a7d6a","rgba(255,255,255,0.06)"]].map(([n,lbl,col,bg])=>(
-          <div key={lbl} style={{background:"#1a1714",border:`1px solid ${bg}`,borderRadius:4,padding:"14px 18px",textAlign:"center"}}>
+        {[[withRecalls.length,"Active Recalls","#fca5a5","rgba(252,165,165,0.2)"],[noRecalls.length,"Clear","#6fcf97","rgba(110,231,183,0.15)"],[unchecked.length,"Not Checked","var(--muted)","var(--w06)"]].map(([n,lbl,col,bg])=>(
+          <div key={lbl} style={{background:"var(--surface)",border:`1px solid ${bg}`,borderRadius:4,padding:"14px 18px",textAlign:"center"}}>
             <div style={{fontSize:26,color:col,fontFamily:"'Cormorant Garamond',serif"}}>{n}</div>
             <div style={{fontSize:9,letterSpacing:"0.35em",color:col,textTransform:"uppercase",marginTop:4}}>{lbl}</div>
           </div>
@@ -1571,7 +1590,7 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
             <div style={{fontSize:10,letterSpacing:"0.35em",color:"#fca5a5",textTransform:"uppercase"}}>⚠ {withRecalls.length} Vehicle{withRecalls.length!==1?"s":""} with Active Recalls</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com" style={{padding:"6px 10px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:12,width:200,fontFamily:"'Jost',sans-serif"}} />
+              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com" style={{padding:"6px 10px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:12,width:200,fontFamily:"'Jost',sans-serif"}} />
               <button onClick={sendRecallAlert} disabled={sendingEmail} style={{padding:"7px 16px",background:"rgba(252,165,165,0.1)",border:"1px solid rgba(252,165,165,0.35)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>
                 {sendingEmail?"Sending…":"Email Alert"}
               </button>
@@ -1580,16 +1599,16 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
           {emailStatus && <div style={{fontSize:11,color:emailStatus==="sent"?"#6fcf97":"#fca5a5",marginBottom:10}}>{emailStatus==="sent"?"✓ Alert sent successfully":"✗ "+emailStatus.replace('error:','')}</div>}
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {withRecalls.map((v,i)=>(
-              <div key={i} style={{background:"#1a1714",border:"1px solid rgba(252,165,165,0.15)",borderRadius:3,padding:"12px 16px"}}>
+              <div key={i} style={{background:"var(--surface)",border:"1px solid rgba(252,165,165,0.15)",borderRadius:3,padding:"12px 16px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{fontSize:14,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                  <span style={{fontSize:14,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
                   <span style={{fontSize:10,color:"#fca5a5",border:"1px solid rgba(252,165,165,0.3)",padding:"2px 8px",borderRadius:2}}>{results[v.vin].length} Recall{results[v.vin].length!==1?"s":""}</span>
                 </div>
-                <div style={{fontSize:11,color:"#554f47",marginBottom:8}}>VIN: {v.vin}{v.store?` · ${v.store}`:""}</div>
+                <div style={{fontSize:11,color:"var(--dim2)",marginBottom:8}}>VIN: {v.vin}{v.store?` · ${v.store}`:""}</div>
                 {results[v.vin].map((r,j)=>(
                   <div key={j} style={{padding:"8px 10px",background:"rgba(252,165,165,0.04)",borderRadius:2,marginBottom:4}}>
                     <div style={{fontSize:11,color:"#fca5a5",marginBottom:2}}>{r.Component||r.component||"Recall"}</div>
-                    <div style={{fontSize:11,color:"#8a7d6a",lineHeight:1.5}}>{r.Summary||r.summary||r.Consequence||r.consequence||"See NHTSA.gov for details"}</div>
+                    <div style={{fontSize:11,color:"var(--muted)",lineHeight:1.5}}>{r.Summary||r.summary||r.Consequence||r.consequence||"See NHTSA.gov for details"}</div>
                   </div>
                 ))}
               </div>
@@ -1603,10 +1622,10 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
           <div style={{fontSize:9,letterSpacing:"0.35em",color:"#6fcf97",textTransform:"uppercase",marginBottom:10}}>Clear Vehicles</div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             {noRecalls.map((v,i)=>(
-              <div key={i} style={{background:"#1a1714",border:"1px solid rgba(110,231,183,0.08)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+              <div key={i} style={{background:"var(--surface)",border:"1px solid rgba(110,231,183,0.08)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
                 <div style={{display:"flex",gap:14,alignItems:"center"}}>
-                  {v.store&&<span style={{fontSize:10,color:"#554f47"}}>{v.store}</span>}
+                  {v.store&&<span style={{fontSize:10,color:"var(--dim2)"}}>{v.store}</span>}
                   <span style={{fontSize:10,color:"#6fcf97",border:"1px solid rgba(110,231,183,0.2)",padding:"2px 8px",borderRadius:2}}>✓ Clear</span>
                 </div>
               </div>
@@ -1617,12 +1636,12 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
 
       {unchecked.length > 0 && (
         <div>
-          <div style={{fontSize:9,letterSpacing:"0.35em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Not Yet Checked</div>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:"var(--muted)",textTransform:"uppercase",marginBottom:10}}>Not Yet Checked</div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             {unchecked.map((v,i)=>(
-              <div key={i} style={{background:"#1a1714",border:"1px solid rgba(255,255,255,0.04)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:"#8a7d6a"}}>{v.year} {v.make} {v.model} {v.trim}</span>
-                <span style={{fontSize:10,color:"#4a4038"}}>{v.vin?"Run check above":"No VIN on file"}</span>
+              <div key={i} style={{background:"var(--surface)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:13,color:"var(--muted)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <span style={{fontSize:10,color:"var(--dim3)"}}>{v.vin?"Run check above":"No VIN on file"}</span>
               </div>
             ))}
           </div>
@@ -1630,7 +1649,7 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
       )}
 
       {vehicles.length === 0 && (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"#554f47",fontSize:13}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"var(--dim2)",fontSize:13}}>
           No inventory vehicles found. Add vehicles in the Inventory tab first, then run a recall check here.
         </div>
       )}
@@ -1714,9 +1733,9 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Multi-Store</div>
-          <h1 style={{fontSize:30,color:"#e8dcc8",fontFamily:"'Cormorant Garamond',serif"}}>Store Inventory Monitor</h1>
+          <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Store Inventory Monitor</h1>
         </div>
-        <button onClick={runScan} disabled={scanning} style={{padding:"10px 22px",background:scanning?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:scanning?"#554f47":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:scanning?"not-allowed":"pointer"}}>
+        <button onClick={runScan} disabled={scanning} style={{padding:"10px 22px",background:scanning?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:scanning?"var(--dim2)":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:scanning?"not-allowed":"pointer"}}>
           {scanning?"✦ Scanning…":"✦ Run Daily Scan"}
         </button>
       </div>
@@ -1729,15 +1748,15 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
           const isSelected = selectedStore===store;
           return (
             <div key={store} onClick={()=>setSelectedStore(isSelected?null:store)}
-              style={{background:isSelected?"rgba(201,168,76,0.08)":"#1a1714",border:`1px solid ${isSelected?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.15)"}`,borderRadius:4,padding:"16px 20px",cursor:"pointer",transition:"all 0.2s"}}
-              onMouseEnter={e=>{if(!isSelected){e.currentTarget.style.borderColor="rgba(201,168,76,0.3)";e.currentTarget.style.background="#201e1a";}}}
-              onMouseLeave={e=>{if(!isSelected){e.currentTarget.style.borderColor="rgba(201,168,76,0.15)";e.currentTarget.style.background="#1a1714";}}}>
+              style={{background:isSelected?"rgba(201,168,76,0.08)":"var(--surface)",border:`1px solid ${isSelected?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.15)"}`,borderRadius:4,padding:"16px 20px",cursor:"pointer",transition:"all 0.2s"}}
+              onMouseEnter={e=>{if(!isSelected){e.currentTarget.style.borderColor="rgba(201,168,76,0.3)";e.currentTarget.style.background="var(--surface-hover)";}}}
+              onMouseLeave={e=>{if(!isSelected){e.currentTarget.style.borderColor="rgba(201,168,76,0.15)";e.currentTarget.style.background="var(--surface)";}}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                <div style={{fontSize:13,color:"#e8dcc8"}}>{store}</div>
+                <div style={{fontSize:13,color:"var(--text)"}}>{store}</div>
                 <div style={{fontSize:22,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>{sv.length}</div>
               </div>
               <div style={{display:"flex",gap:20}}>
-                {avgPrice>0&&<div><div style={{fontSize:9,color:"#554f47",letterSpacing:"0.2em",textTransform:"uppercase"}}>Avg Price</div><div style={{fontSize:12,color:"#8a7d6a"}}>${avgPrice.toLocaleString()}</div></div>}
+                {avgPrice>0&&<div><div style={{fontSize:9,color:"var(--dim2)",letterSpacing:"0.2em",textTransform:"uppercase"}}>Avg Price</div><div style={{fontSize:12,color:"var(--muted)"}}>${avgPrice.toLocaleString()}</div></div>}
                 {aging>0&&<div><div style={{fontSize:9,color:"#fca5a5",letterSpacing:"0.2em",textTransform:"uppercase"}}>90+ Days</div><div style={{fontSize:12,color:"#fca5a5"}}>{aging}</div></div>}
               </div>
             </div>
@@ -1746,23 +1765,23 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
       </div>
 
       {selectedStore && (
-        <div style={{background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:20,marginBottom:20}}>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:20,marginBottom:20}}>
           <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:14}}>{selectedStore}</div>
           {(byStore[selectedStore]||[]).length===0?(
-            <div style={{color:"#554f47",fontSize:13}}>No vehicles at this location</div>
+            <div style={{color:"var(--dim2)",fontSize:13}}>No vehicles at this location</div>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {(byStore[selectedStore]||[]).map((v,i)=>{
                 const daysListed = v.id?Math.floor((Date.now()-v.id)/86400000):null;
                 return (
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"#0d0c0a",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3}}>
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3}}>
                     <div>
-                      <div style={{fontSize:13,color:"#e8dcc8"}}>{v.year} {v.make} {v.model} {v.trim}</div>
-                      <div style={{fontSize:11,color:"#8a7d6a"}}>{v.color}{v.mileage?` · ${Number(v.mileage).toLocaleString()} mi`:""} · VIN: {v.vin||"—"}</div>
+                      <div style={{fontSize:13,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</div>
+                      <div style={{fontSize:11,color:"var(--muted)"}}>{v.color}{v.mileage?` · ${Number(v.mileage).toLocaleString()} mi`:""} · VIN: {v.vin||"—"}</div>
                     </div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontSize:15,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price||0).toLocaleString()}</div>
-                      {daysListed!==null&&<div style={{fontSize:10,color:daysListed>90?"#fca5a5":"#554f47"}}>{daysListed}d on lot</div>}
+                      {daysListed!==null&&<div style={{fontSize:10,color:daysListed>90?"#fca5a5":"var(--dim2)"}}>{daysListed}d on lot</div>}
                     </div>
                   </div>
                 );
@@ -1773,9 +1792,9 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
       )}
 
       {unassigned.length>0&&(
-        <div style={{background:"#1a1714",border:"1px solid rgba(255,255,255,0.06)",borderRadius:4,padding:"14px 20px",marginBottom:20}}>
-          <div style={{fontSize:9,letterSpacing:"0.3em",color:"#554f47",textTransform:"uppercase",marginBottom:10}}>Unassigned ({unassigned.length})</div>
-          <div style={{fontSize:11,color:"#554f47"}}>Edit these vehicles in Inventory to assign them to a store.</div>
+        <div style={{background:"var(--surface)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:4,padding:"14px 20px",marginBottom:20}}>
+          <div style={{fontSize:9,letterSpacing:"0.3em",color:"var(--dim2)",textTransform:"uppercase",marginBottom:10}}>Unassigned ({unassigned.length})</div>
+          <div style={{fontSize:11,color:"var(--dim2)"}}>Edit these vehicles in Inventory to assign them to a store.</div>
         </div>
       )}
 
@@ -1784,24 +1803,24 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10}}>
             <div>
               <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Jessica's Daily Scan Report</div>
-              <div style={{fontSize:11,color:"#554f47"}}>{scanReport.totalVehicles} vehicles · {new Date().toLocaleDateString()}</div>
+              <div style={{fontSize:11,color:"var(--dim2)"}}>{scanReport.totalVehicles} vehicles · {new Date().toLocaleDateString()}</div>
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} style={{padding:"5px 10px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:11,width:190,fontFamily:"'Jost',sans-serif"}} />
+              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} style={{padding:"5px 10px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:11,width:190,fontFamily:"'Jost',sans-serif"}} />
               <button onClick={emailReport} disabled={sendingEmail} style={{padding:"6px 14px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:9,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>
                 {sendingEmail?"Sending…":"Email Report"}
               </button>
             </div>
           </div>
           {emailStatus&&<div style={{fontSize:11,color:emailStatus==="sent"?"#6fcf97":"#fca5a5",marginBottom:10}}>{emailStatus==="sent"?"✓ Report emailed":"✗ "+emailStatus.replace('error:','')}</div>}
-          <div style={{fontSize:14,color:"#e8dcc8",lineHeight:1.7,marginBottom:14}}>{scanReport.summary}</div>
+          <div style={{fontSize:14,color:"var(--text)",lineHeight:1.7,marginBottom:14}}>{scanReport.summary}</div>
           {(scanReport.alerts||[]).length>0&&(
             <div style={{marginBottom:14}}>
               <div style={{fontSize:9,letterSpacing:"0.3em",color:"#fca5a5",textTransform:"uppercase",marginBottom:8}}>Alerts</div>
               {scanReport.alerts.map((a,i)=>(
                 <div key={i} style={{padding:"8px 12px",background:"rgba(252,165,165,0.05)",border:"1px solid rgba(252,165,165,0.15)",borderRadius:3,marginBottom:5}}>
                   <span style={{fontSize:11,color:"#fca5a5"}}>{a.store} · </span>
-                  <span style={{fontSize:11,color:"#e8dcc8"}}>{a.message}</span>
+                  <span style={{fontSize:11,color:"var(--text)"}}>{a.message}</span>
                 </div>
               ))}
             </div>
@@ -1810,7 +1829,7 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
             <div>
               <div style={{fontSize:9,letterSpacing:"0.3em",color:"#6fcf97",textTransform:"uppercase",marginBottom:8}}>Recommendations</div>
               {scanReport.recommendations.map((r,i)=>(
-                <div key={i} style={{padding:"7px 12px",background:"rgba(110,231,183,0.04)",border:"1px solid rgba(110,231,183,0.12)",borderRadius:3,marginBottom:4,fontSize:12,color:"#8a7d6a"}}>{r}</div>
+                <div key={i} style={{padding:"7px 12px",background:"rgba(110,231,183,0.04)",border:"1px solid rgba(110,231,183,0.12)",borderRadius:3,marginBottom:4,fontSize:12,color:"var(--muted)"}}>{r}</div>
               ))}
             </div>
           )}
@@ -1829,7 +1848,19 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("All");
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pinnacle_dark') === '1');
   const isSetup = SUPABASE_URL === "YOUR_SUPABASE_URL";
+
+  useEffect(() => {
+    if (darkMode) document.documentElement.setAttribute('data-dark', '');
+    else document.documentElement.removeAttribute('data-dark');
+  }, [darkMode]);
+
+  const toggleDark = () => setDarkMode(d => {
+    const v = !d;
+    localStorage.setItem('pinnacle_dark', v ? '1' : '0');
+    return v;
+  });
 
   useEffect(() => { if (!isSetup) fetch(); else setLoading(false); }, []);
 
@@ -1877,7 +1908,7 @@ function App() {
   return (
     <div style={{minHeight:"100vh",display:"flex"}}>
       {/* SIDEBAR */}
-      <div style={{width:210,background:"#131110",borderRight:"1px solid rgba(201,168,76,0.15)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:10}}>
+      <div style={{width:210,background:"var(--sidebar-bg)",borderRight:"1px solid rgba(201,168,76,0.15)",display:"flex",flexDirection:"column",flexShrink:0,position:"fixed",top:0,bottom:0,left:0,zIndex:10}}>
         <div style={{padding:"24px 20px 16px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center"}}>
           <svg width="36" height="36" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{marginBottom:10}}>
             <polygon points="26,2 50,14 50,38 26,50 2,38 2,14" stroke="#c9a84c" strokeWidth="1.2" fill="none"/>
@@ -1885,27 +1916,36 @@ function App() {
             <polygon points="26,14 38,21 38,31 26,38 14,31 14,21" stroke="#c9a84c" strokeWidth="0.4" fill="none" opacity="0.18"/>
             <text x="26" y="31" textAnchor="middle" fontFamily="Cinzel,serif" fontSize="14" fontWeight="500" fill="#c9a84c">P</text>
           </svg>
-          <div style={{fontFamily:"'Cinzel',serif",fontSize:14,fontWeight:500,letterSpacing:"0.35em",color:"#e8dcc8",textTransform:"uppercase",lineHeight:1}}>Pinnacle</div>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:14,fontWeight:500,letterSpacing:"0.35em",color:"var(--text)",textTransform:"uppercase",lineHeight:1}}>Pinnacle</div>
           <div style={{fontFamily:"'Jost',sans-serif",fontWeight:200,fontSize:7,letterSpacing:"0.45em",color:"#c9a84c",textTransform:"uppercase",marginTop:5}}>Luxury Automotive Group</div>
-          <div style={{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:6.5,letterSpacing:"0.3em",color:"#8a7d6a",textTransform:"uppercase",marginTop:4,padding:"2px 8px",border:"1px solid rgba(138,125,106,0.25)"}}>CRM</div>
+          <div style={{fontFamily:"'Jost',sans-serif",fontWeight:300,fontSize:6.5,letterSpacing:"0.3em",color:"var(--muted)",textTransform:"uppercase",marginTop:4,padding:"2px 8px",border:"1px solid rgba(138,125,106,0.25)"}}>CRM</div>
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
           {[["Dashboard","dashboard"],["Clients","list"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Recalls","recalls"],["Stores","stores"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
-            <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"#9a8d7a",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
+            <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"10px 12px",background:view===v?"rgba(201,168,76,0.12)":"transparent",border:view===v?"1px solid rgba(201,168,76,0.25)":"1px solid transparent",borderRadius:3,color:view===v?gold:"var(--nav-text)",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}>
               {lbl}
             </button>
           ))}
         </nav>
         <div style={{padding:"16px 24px",borderTop:"1px solid rgba(201,168,76,0.12)"}}>
-          <div style={{fontSize:9,letterSpacing:"0.35em",color:"#8a7d6a",textTransform:"uppercase",marginBottom:10}}>Pipeline</div>
+          <div style={{fontSize:9,letterSpacing:"0.35em",color:"var(--muted)",textTransform:"uppercase",marginBottom:10}}>Pipeline</div>
           {STAGES.map(s=>{
             const sc=STAGE_STYLE[s];
-            return <div key={s} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:11,color:"#6a5d4a"}}>{s}</span><span style={{fontSize:11,color:sc.color,fontWeight:500}}>{counts[s]||0}</span></div>;
+            return <div key={s} style={{display:"flex",justifyContent:"space-between",marginBottom:5}}><span style={{fontSize:11,color:"var(--dim)"}}>{s}</span><span style={{fontSize:11,color:sc.color,fontWeight:500}}>{counts[s]||0}</span></div>;
           })}
         </div>
-        <div style={{padding:"12px 24px",borderTop:"1px solid rgba(201,168,76,0.1)"}}>
-          <div style={{fontSize:10,color:"#7a6d5a"}}>Pinnacle AI · v1.0</div>
+        <div style={{padding:"12px 20px 14px",borderTop:"1px solid rgba(201,168,76,0.1)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{fontSize:10,color:"var(--muted2)"}}>Pinnacle AI · v1.0</div>
+            <button onClick={toggleDark} title={darkMode?"Switch to Light Mode":"Switch to Dark Mode"}
+              style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",padding:"2px 0"}}>
+              <span style={{fontSize:8,letterSpacing:"0.15em",color:"var(--dim)",textTransform:"uppercase"}}>{darkMode?"Light":"Dark"}</span>
+              <div style={{width:30,height:16,borderRadius:8,background:darkMode?"rgba(201,168,76,0.18)":"rgba(0,0,0,0.12)",border:`1px solid ${darkMode?"rgba(201,168,76,0.4)":"rgba(0,0,0,0.2)"}`,position:"relative",transition:"all 0.25s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:darkMode?12:2,width:10,height:10,borderRadius:"50%",background:darkMode?gold:"var(--dim)",transition:"left 0.25s"}} />
+              </div>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1915,29 +1955,29 @@ function App() {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
             <div>
               <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>All Clients</div>
-              <h1 style={{fontSize:30,color:"#e8dcc8"}}>Client Roster</h1>
+              <h1 style={{fontSize:30,color:"var(--text)"}}>Client Roster</h1>
             </div>
             <button onClick={()=>nav("new")} style={{padding:"11px 22px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.7)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ New Lead</button>
           </div>
           <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…" style={{flex:1,minWidth:180,padding:"9px 14px",background:"#1a1714",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"#e8dcc8",fontSize:13,fontFamily:"'Jost',sans-serif",fontWeight:300}} />
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…" style={{flex:1,minWidth:180,padding:"9px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:13,fontFamily:"'Jost',sans-serif",fontWeight:300}} />
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {["All",...STAGES].map(s=>(
-                <button key={s} onClick={()=>setStageFilter(s)} style={{padding:"8px 12px",background:stageFilter===s?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${stageFilter===s?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.06)"}`,borderRadius:3,color:stageFilter===s?gold:"#9a8d7a",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer",transition:"all 0.2s",whiteSpace:"nowrap"}}>
+                <button key={s} onClick={()=>setStageFilter(s)} style={{padding:"8px 12px",background:stageFilter===s?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${stageFilter===s?"rgba(201,168,76,0.45)":"var(--w06)"}`,borderRadius:3,color:stageFilter===s?gold:"var(--nav-text)",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer",transition:"all 0.2s",whiteSpace:"nowrap"}}>
                   {s}
                 </button>
               ))}
             </div>
           </div>
-          {loading && <div style={{textAlign:"center",padding:"60px 0",color:"#4a4038"}}>Loading…</div>}
-          {!loading && filtered.length===0 && <div style={{textAlign:"center",padding:"80px 0"}}><p style={{fontSize:14,color:"#8a7d6a",lineHeight:1.8}}>{search||stageFilter!=="All"?"No clients match your search.":"No clients yet. Add your first lead."}</p></div>}
+          {loading && <div style={{textAlign:"center",padding:"60px 0",color:"var(--dim3)"}}>Loading…</div>}
+          {!loading && filtered.length===0 && <div style={{textAlign:"center",padding:"80px 0"}}><p style={{fontSize:14,color:"var(--muted)",lineHeight:1.8}}>{search||stageFilter!=="All"?"No clients match your search.":"No clients yet. Add your first lead."}</p></div>}
           {!loading && filtered.map(c=><Card key={c.id} client={c} onClick={()=>{setSelected(c);setView("detail");}} />)}
         </>}
 
         {view==="new" && <>
           <div style={{marginBottom:32}}>
             <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>New Lead</div>
-            <h1 style={{fontSize:30,color:"#e8dcc8"}}>Add Client</h1>
+            <h1 style={{fontSize:30,color:"var(--text)"}}>Add Client</h1>
           </div>
           <ClientForm onSave={handleSave} onCancel={()=>nav("list")} saving={saving} />
         </>}
@@ -1959,7 +1999,7 @@ function App() {
         {view==="edit" && selected && <>
           <div style={{marginBottom:32}}>
             <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Editing</div>
-            <h1 style={{fontSize:30,color:"#e8dcc8"}}>{selected.first_name} {selected.last_name}</h1>
+            <h1 style={{fontSize:30,color:"var(--text)"}}>{selected.first_name} {selected.last_name}</h1>
           </div>
           <ClientForm initial={selected} onSave={handleSave} onCancel={()=>setView("detail")} saving={saving} />
         </>}
