@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Pinnacle CRM",
+    "slug": "pinnacle-crm",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f9f6f1"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pinnacle.crm",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used for uploading photos to client records.",
+        "NSMicrophoneUsageDescription": "Used for voice input.",
+        "NSPhotoLibraryUsageDescription": "Used for selecting photos for client records."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f9f6f1"
+      },
+      "package": "com.pinnacle.crm"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
