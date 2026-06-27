@@ -2055,9 +2055,26 @@ function SalesView() {
   const [pdfParsing, setPdfParsing] = React.useState(false);
   const [pdfPreview, setPdfPreview] = React.useState(null);
   const [pdfError, setPdfError] = React.useState(null);
-  const emptyDeal = {date:new Date().toISOString().split('T')[0],vehicle:'',stockNum:'',type:'new',front:'',back:'',notes:''};
+  const emptyDeal = {date:new Date().toISOString().split('T')[0],vehicle:'',stockNum:'',type:'new',front:'',back:'',notes:'',split_with:'',split_pct:100};
   const [form, setForm] = React.useState(emptyDeal);
   const [goalForm, setGoalForm] = React.useState({...goals});
+  // Spiffs
+  const [spiffs, setSpiffs] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('pinnacle_spiffs') || '[]'); } catch { return []; }
+  });
+  const [showSpiff, setShowSpiff] = React.useState(false);
+  const emptySpiff = {date:new Date().toISOString().split('T')[0],model:'',amount:'',notes:''};
+  const [spiffForm, setSpiffForm] = React.useState(emptySpiff);
+  const persistSpiffs = (updated) => {
+    localStorage.setItem('pinnacle_spiffs', JSON.stringify(updated));
+    setSpiffs(updated);
+  };
+  const saveSpiff = () => {
+    const clean = {...spiffForm, amount:Number(spiffForm.amount)||0, id:Date.now()};
+    persistSpiffs([...spiffs, clean]);
+    setShowSpiff(false); setSpiffForm(emptySpiff);
+  };
+  const removeSpiff = (idx) => persistSpiffs(spiffs.filter((_,i)=>i!==idx));
 
   const extractDealFields = (fullText) => {
     const get = (regex) => { const m = fullText.match(regex); return m ? m[1].trim() : ''; };
@@ -2180,10 +2197,24 @@ function SalesView() {
   const pctMonth = today / totalDays;
   const pctYear = dayOfYear / daysInYear;
   const fmt = n => '$' + Math.round(n||0).toLocaleString();
-  const calcComm = d => {
+  // Gross commission before split (with caps)
+  const calcGrossComm = d => {
     const front = Number(d.front)||0;
     const back  = Number(d.back)||0;
-    return Math.round(front * (d.type==='used' ? 0.20 : 0.15) + back * 0.10);
+    const frontComm = d.type==='used'
+      ? Math.min(front * 0.20, 7500)
+      : Math.min(front * 0.15, 6000);
+    return Math.round(frontComm + back * 0.10);
+  };
+  // My share after split
+  const calcComm = d => {
+    const gross = calcGrossComm(d);
+    const pct = Number(d.split_pct)||100;
+    return Math.round(gross * pct / 100);
+  };
+  const isCapped = d => {
+    const front = Number(d.front)||0;
+    return d.type==='used' ? front * 0.20 > 7500 : front * 0.15 > 6000;
   };
 
   const thisMonthDeals = deals.filter(d => {
@@ -2197,14 +2228,18 @@ function SalesView() {
   const mtdBack  = thisMonthDeals.reduce((s,d)=>s+(Number(d.back)||0),0);
   const mtdTotal = mtdFront + mtdBack;
   const mtdAvg   = mtdUnits>0 ? Math.round(mtdTotal/mtdUnits) : 0;
-  const mtdComm  = thisMonthDeals.reduce((s,d)=>s+calcComm(d),0);
+  const mtdDealComm = thisMonthDeals.reduce((s,d)=>s+calcComm(d),0);
+  const mtdSpiffs = spiffs.filter(s=>{const dt=new Date(s.date+'T00:00:00');return dt.getMonth()===now.getMonth()&&dt.getFullYear()===now.getFullYear();}).reduce((s,sp)=>s+(Number(sp.amount)||0),0);
+  const mtdComm = mtdDealComm + mtdSpiffs;
 
   const ytdUnits = thisYearDeals.length;
   const ytdFront = thisYearDeals.reduce((s,d)=>s+(Number(d.front)||0),0);
   const ytdBack  = thisYearDeals.reduce((s,d)=>s+(Number(d.back)||0),0);
   const ytdTotal = ytdFront + ytdBack;
   const ytdAvg   = ytdUnits>0 ? Math.round(ytdTotal/ytdUnits) : 0;
-  const ytdComm  = thisYearDeals.reduce((s,d)=>s+calcComm(d),0);
+  const ytdDealComm = thisYearDeals.reduce((s,d)=>s+calcComm(d),0);
+  const ytdSpiffs = spiffs.filter(s=>new Date(s.date+'T00:00:00').getFullYear()===now.getFullYear()).reduce((s,sp)=>s+(Number(sp.amount)||0),0);
+  const ytdComm = ytdDealComm + ytdSpiffs;
 
   const pacedMonthUnits = pctMonth>0 ? Math.round(mtdUnits/pctMonth) : 0;
   const pacedMonthGross = pctMonth>0 ? Math.round(mtdTotal/pctMonth) : 0;
@@ -2252,6 +2287,7 @@ function SalesView() {
           {syncStatus&&<span style={{fontSize:10,letterSpacing:"0.15em",color:syncStatus==='saved'?"#6fcf97":syncStatus==='error'?"#fca5a5":gold,alignSelf:"center"}}>{syncStatus==='saving'?"Syncing…":syncStatus==='saved'?"✓ Saved to cloud":"⚠ Offline — saved locally"}</span>}
           <button onClick={()=>{setGoalForm({...goals});setShowGoals(true);}} style={{padding:"10px 18px",background:"var(--w04)",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Set Goals</button>
           <button onClick={()=>{setPdfPreview(null);setPdfError(null);setShowPdfImport(true);}} style={{padding:"10px 18px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>📄 Import Sheet</button>
+          <button onClick={()=>{setSpiffForm(emptySpiff);setShowSpiff(true);}} style={{padding:"10px 18px",background:"rgba(252,211,77,0.08)",border:"1px solid rgba(252,211,77,0.35)",borderRadius:3,color:"#fcd34d",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>⚡ Log Spiff</button>
           <button onClick={()=>{setForm(emptyDeal);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Log Deal</button>
         </div>
       </div>
@@ -2266,7 +2302,7 @@ function SalesView() {
         Month to Date — {now.toLocaleString('default',{month:'long',year:'numeric'})}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:2,marginBottom:goals.monthlyUnits>0||goals.monthlyGross>0?8:16}}>
-        {[["Units Sold",mtdUnits,"var(--text)"],["Front Gross",fmt(mtdFront),"var(--text)"],["Back Gross",fmt(mtdBack),"var(--text)"],["Total Gross",fmt(mtdTotal),gold],["Avg Per Car",fmt(mtdAvg),"var(--text)"],["Est. Commission",fmt(mtdComm),"#6fcf97"]].map(([lbl,val,col])=>(
+        {[["Units Sold",mtdUnits,"var(--text)"],["Front Gross",fmt(mtdFront),"var(--text)"],["Back Gross",fmt(mtdBack),"var(--text)"],["Total Gross",fmt(mtdTotal),gold],["Avg Per Car",fmt(mtdAvg),"var(--text)"],["My Pay"+(mtdSpiffs>0?` (+${fmt(mtdSpiffs)} spiff)`:''),fmt(mtdComm),"#6fcf97"]].map(([lbl,val,col])=>(
           <div key={lbl} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:4,padding:"16px 18px"}}>
             <div style={{fontSize:9,letterSpacing:"0.3em",color:"var(--muted)",textTransform:"uppercase",marginBottom:6}}>{lbl}</div>
             <div style={{fontSize:26,fontFamily:"'Cormorant Garamond',serif",color:col,lineHeight:1}}>{val}</div>
@@ -2409,9 +2445,11 @@ function SalesView() {
               <div key={d.id||i} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:3,padding:"12px 18px",display:"flex",alignItems:"center",gap:16}}>
                 <div style={{minWidth:72,fontSize:11,color:"var(--dim2)",flexShrink:0}}>{new Date(d.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2,flexWrap:"wrap"}}>
                     <span style={{fontSize:13,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.vehicle||"Vehicle not specified"}</span>
                     <span style={{fontSize:8,letterSpacing:"0.18em",textTransform:"uppercase",padding:"2px 6px",borderRadius:2,background:isUsed?"rgba(147,197,253,0.12)":"rgba(111,207,151,0.12)",color:isUsed?"#93c5fd":"#6fcf97",flexShrink:0}}>{isUsed?"Used":"New"}</span>
+                    {d.split_pct<100&&d.split_with&&<span style={{fontSize:8,letterSpacing:"0.15em",textTransform:"uppercase",padding:"2px 6px",borderRadius:2,background:"rgba(252,211,77,0.1)",color:"#fcd34d",flexShrink:0}}>Split {d.split_pct}% w/ {d.split_with}</span>}
+                    {isCapped(d)&&<span style={{fontSize:8,letterSpacing:"0.12em",textTransform:"uppercase",padding:"2px 6px",borderRadius:2,background:"rgba(252,211,77,0.08)",color:"#fcd34d",flexShrink:0}}>⚡ Capped</span>}
                   </div>
                   {d.stockNum&&<div style={{fontSize:10,color:"var(--dim2)"}}>Stock #{d.stockNum}</div>}
                 </div>
@@ -2472,14 +2510,37 @@ function SalesView() {
                 <div><div style={lbl9}>Front End Gross ($)</div><input type="number" value={form.front} onChange={e=>setForm(f=>({...f,front:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
                 <div><div style={lbl9}>Back End Gross ($)</div><input type="number" value={form.back} onChange={e=>setForm(f=>({...f,back:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-                <div style={{padding:"11px 16px",background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:10,color:"var(--muted)",letterSpacing:"0.2em",textTransform:"uppercase"}}>Total Gross</span>
-                  <span style={{fontSize:22,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${((Number(form.front)||0)+(Number(form.back)||0)).toLocaleString()}</span>
+              {/* Split Deal */}
+              <div style={{marginBottom:12,padding:"12px 14px",background:"var(--w03)",border:"1px solid var(--w08)",borderRadius:4}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:form.split_with||form.split_pct<100?10:0}}>
+                  <div style={{fontSize:9,letterSpacing:"0.3em",color:"var(--muted)",textTransform:"uppercase"}}>Split Deal?</div>
+                  <div style={{display:"flex",gap:6}}>
+                    {[100,50,60,70].map(pct=>(
+                      <button key={pct} onClick={()=>setForm(f=>({...f,split_pct:pct}))}
+                        style={{padding:"5px 10px",background:form.split_pct===pct&&(pct<100||form.split_with)?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${form.split_pct===pct&&(pct<100||form.split_with)?"rgba(201,168,76,0.4)":"rgba(201,168,76,0.15)"}`,borderRadius:3,color:form.split_pct===pct&&(pct<100||form.split_with)?gold:"var(--muted)",fontSize:10,cursor:"pointer",letterSpacing:"0.1em"}}>
+                        {pct===100?"No split":pct+"%"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{padding:"11px 16px",background:"rgba(111,207,151,0.07)",border:"1px solid rgba(111,207,151,0.25)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:10,color:"#6fcf97",letterSpacing:"0.2em",textTransform:"uppercase"}}>My Commission</span>
-                  <span style={{fontSize:22,color:"#6fcf97",fontFamily:"'Cormorant Garamond',serif"}}>${calcComm(form).toLocaleString()}</span>
+                {form.split_pct<100&&(
+                  <input value={form.split_with||''} onChange={e=>setForm(f=>({...f,split_with:e.target.value}))} placeholder="Split partner name…" style={{...fieldStyle,marginTop:4}} />
+                )}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                <div style={{padding:"11px 16px",background:"rgba(201,168,76,0.07)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:10,color:"var(--muted)",letterSpacing:"0.2em",textTransform:"uppercase"}}>Total Gross</span>
+                    <span style={{fontSize:22,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${((Number(form.front)||0)+(Number(form.back)||0)).toLocaleString()}</span>
+                  </div>
+                  {isCapped(form)&&<div style={{fontSize:9,color:"#fcd34d",marginTop:4,letterSpacing:"0.1em"}}>⚡ FRONT CAPPED AT {form.type==='used'?'$7,500':'$6,000'}</div>}
+                </div>
+                <div style={{padding:"11px 16px",background:"rgba(111,207,151,0.07)",border:"1px solid rgba(111,207,151,0.25)",borderRadius:4}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:10,color:"#6fcf97",letterSpacing:"0.2em",textTransform:"uppercase"}}>My Pay{form.split_pct<100?` (${form.split_pct}%)`:''}</span>
+                    <span style={{fontSize:22,color:"#6fcf97",fontFamily:"'Cormorant Garamond',serif"}}>${calcComm(form).toLocaleString()}</span>
+                  </div>
+                  {form.split_pct<100&&<div style={{fontSize:9,color:"var(--dim2)",marginTop:4}}>Gross comm: ${calcGrossComm(form).toLocaleString()}</div>}
                 </div>
               </div>
               <div style={{marginBottom:20}}><div style={lbl9}>Notes</div><input value={form.notes||''} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Optional — customer name, deal highlights, etc." style={fieldStyle} /></div>
@@ -2564,6 +2625,61 @@ function SalesView() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Spiff Log */}
+      {spiffs.filter(s=>new Date(s.date+'T00:00:00').getFullYear()===now.getFullYear()).length>0&&(
+        <div style={{marginTop:28}}>
+          <div style={{fontSize:9,letterSpacing:"0.4em",color:"#fcd34d",textTransform:"uppercase",marginBottom:12}}>Spiff Log — {now.getFullYear()}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {spiffs.filter(s=>new Date(s.date+'T00:00:00').getFullYear()===now.getFullYear()).sort((a,b)=>new Date(b.date)-new Date(a.date)).map((s,i)=>{
+              const origIdx=spiffs.indexOf(s);
+              return(
+                <div key={s.id||i} style={{background:"var(--surface)",border:"1px solid rgba(252,211,77,0.15)",borderRadius:3,padding:"10px 18px",display:"flex",alignItems:"center",gap:16}}>
+                  <div style={{minWidth:72,fontSize:11,color:"var(--dim2)",flexShrink:0}}>{new Date(s.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,color:"var(--text)"}}>{s.model||"Spiff"}</div>
+                    {s.notes&&<div style={{fontSize:10,color:"var(--dim2)"}}>{s.notes}</div>}
+                  </div>
+                  <div style={{fontSize:18,color:"#fcd34d",fontFamily:"'Cormorant Garamond',serif",minWidth:80,textAlign:"right"}}>+${Number(s.amount).toLocaleString()}</div>
+                  <button onClick={()=>removeSpiff(origIdx)} style={{padding:"5px 10px",background:"transparent",border:"1px solid rgba(252,165,165,0.2)",borderRadius:2,color:"#fca5a5",fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"}}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {/* Spiff Modal */}
+      {showSpiff&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(252,211,77,0.35)",borderRadius:8,width:"100%",maxWidth:420}}>
+            <div style={{padding:"18px 24px",borderBottom:"1px solid rgba(252,211,77,0.15)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:10,letterSpacing:"0.35em",color:"#fcd34d",textTransform:"uppercase"}}>⚡ Log Spiff / Bonus</div>
+              <button onClick={()=>setShowSpiff(false)} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:16,cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:24}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                <div><div style={lbl9}>Date</div><input type="date" value={spiffForm.date} onChange={e=>setSpiffForm(f=>({...f,date:e.target.value}))} style={fieldStyle} /></div>
+                <div><div style={lbl9}>Amount ($)</div><input type="number" value={spiffForm.amount} onChange={e=>setSpiffForm(f=>({...f,amount:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
+              </div>
+              <div style={{marginBottom:12}}>
+                <div style={lbl9}>Model / Reason</div>
+                <input value={spiffForm.model} onChange={e=>setSpiffForm(f=>({...f,model:e.target.value}))} placeholder="e.g. Cullinan spiff, weekend bonus, conquest…" style={fieldStyle} />
+              </div>
+              <div style={{marginBottom:20}}>
+                <div style={lbl9}>Notes</div>
+                <input value={spiffForm.notes} onChange={e=>setSpiffForm(f=>({...f,notes:e.target.value}))} placeholder="Optional" style={fieldStyle} />
+              </div>
+              <div style={{padding:"11px 16px",background:"rgba(252,211,77,0.07)",border:"1px solid rgba(252,211,77,0.2)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+                <span style={{fontSize:10,color:"#fcd34d",letterSpacing:"0.2em",textTransform:"uppercase"}}>Spiff Amount</span>
+                <span style={{fontSize:26,color:"#fcd34d",fontFamily:"'Cormorant Garamond',serif"}}>${(Number(spiffForm.amount)||0).toLocaleString()}</span>
+              </div>
+              <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+                <button onClick={()=>setShowSpiff(false)} style={{padding:"9px 20px",background:"transparent",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+                <button onClick={saveSpiff} style={{padding:"9px 26px",background:"rgba(252,211,77,0.12)",border:"1px solid rgba(252,211,77,0.45)",borderRadius:3,color:"#fcd34d",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Save Spiff</button>
+              </div>
             </div>
           </div>
         </div>
