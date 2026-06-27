@@ -9,6 +9,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>if(window['pdfjs-dist/build/pdf'])window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+*/
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1002,8 +1005,9 @@ function InventoryView() {
   const [importData, setImportData] = React.useState([]);
   const [importStore, setImportStore] = React.useState('');
   const fileInputRef = React.useRef(null);
-
-  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',store:'',status:'Available',notes:''};
+const priceDropRef = React.useRef(null);
+  const [pdReport, setPdReport] = React.useState([]);
+  const [showPdReport, setShowPdReport] = React.useState(false);  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',store:'',status:'Available',notes:''};
   const [form, setForm] = React.useState(emptyVehicle);
 
   const saveToLS = (list) => localStorage.setItem('pinnacle_inventory', JSON.stringify(list));
@@ -1089,6 +1093,123 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
   };
 
   const doImport = () => {
+     const handlePriceDropFile = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        if (json.length < 2) { alert('File appears empty'); return; }
+        const headers = json[0].map(h => String(h));
+        const findCol = (...keys) => headers.find(h => keys.some(k => h.toLowerCase().replace(/[\s_\-]/g,'').includes(k.toLowerCase())));
+        const vinCol   = findCol('vin','vehiclevin');
+        const priceCol = findCol('price','askingprice','saleprice','internetprice','listprice','msrp');
+        const yearCol  = findCol('year','modelyear','yr');
+        const makeCol  = findCol('make','brand');
+        const modelCol = findCol('model');
+        if (!vinCol || !priceCol) { alert('Could not find VIN and Price columns in this file.'); return; }
+        const rows = json.slice(1).filter(r => r.some(c => c !== ''));
+        const drops = [];
+        rows.forEach(row => {
+          const rowObj = {}; headers.forEach((h,i) => { rowObj[h] = row[i] !== undefined ? String(row[i]) : ''; });
+          const vin = rowObj[vinCol]?.trim();
+          const newPriceRaw = rowObj[priceCol]?.replace(/[^0-9.]/g,'');
+          if (!vin || !newPriceRaw) return;
+          const newPrice = parseFloat(newPriceRaw);
+          const existing = vehicles.find(v => v.vin && v.vin.trim().toUpperCase() === vin.toUpperCase());
+          if (!existing) return;
+          const oldPrice = parseFloat(String(existing.price).replace(/[^0-9.]/g,''));
+          if (!oldPrice || isNaN(newPrice) || newPrice >= oldPrice) return;
+          const drop = oldPrice - newPrice;
+          const pct  = ((drop / oldPrice) * 100).toFixed(1);
+          drops.push({
+            vin,
+            name: [existing.year || rowObj[yearCol], existing.make || rowObj[makeCol], existing.model || rowObj[modelCol], existing.trim].filter(Boolean).join(' ') || vin,
+            oldPrice, newPrice, drop, pct, store: existing.store || '',
+            vehicleIdx: vehicles.indexOf(existing)
+          });
+        });
+        setPdReport(drops);
+        setShowPdReport(true);
+      } catch(err) { alert('Failed to parse file: ' + err.message); }
+    };
+    reader.readAsArrayBuffer(file); e.target.value = '';
+  };
+ 
+  const applyPriceDrop = (item) => {
+    const updated = vehicles.map((v, i) => i === item.vehicleIdx
+      ? { ...v, oldPrice: String(item.oldPrice), price: String(item.newPrice) }
+      : v);
+    setVehicles(updated); saveToLS(updated);
+    setPdReport(prev => prev.filter(p => p.vin !== item.vin));
+    if (pdReport.length <= 1) setShowPdReport(false);
+  };
+ 
+  const applyAllPriceDrops = () => {
+    let updated = [...vehicles];
+    pdReport.forEach(item => {
+      updated = updated.map((v, i) => i === item.vehicleIdx
+        ? { ...v, oldPrice: String(item.oldPrice), price: String(item.newPrice) }
+        : v);
+    });
+    setVehicles(updated); saveToLS(updated);
+    setPdReport([]); setShowPdReport(false);
+  };
+*/
+ 
+// ─────────────────────────────────────────────────────────────
+//  2c) Find the "↑ Import CSV/Excel" button inside InventoryView's return JSX.
+//      Add these lines IMMEDIATELY BEFORE that button:
+// ─────────────────────────────────────────────────────────────
+/*
+          <input ref={priceDropRef} type="file" accept=".csv,.xlsx,.xls" onChange={handlePriceDropFile} style={{display:"none"}} />
+          <button onClick={()=>priceDropRef.current?.click()} style={{padding:"10px 18px",background:"rgba(93,188,125,0.1)",border:"1px solid rgba(93,188,125,0.35)",borderRadius:3,color:"#6fcf97",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>📉 Price Drop Check</button>
+*/
+ 
+// ─────────────────────────────────────────────────────────────
+//  2d) Find the closing </div> at the very end of InventoryView's return.
+//      Add this Price Drop Report modal BEFORE that final closing </div>:
+// ─────────────────────────────────────────────────────────────
+/*
+      {showPdReport && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"var(--surface)",borderRadius:6,padding:28,width:"100%",maxWidth:680,maxHeight:"80vh",overflowY:"auto",border:"1px solid rgba(201,168,76,0.2)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Inventory Analysis</div>
+                <h2 style={{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:"var(--text)"}}>Price Drop Report</h2>
+                <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{pdReport.length} vehicle{pdReport.length!==1?"s":""} with price reductions found</div>
+              </div>
+              <div style={{display:"flex",gap:8"}}>
+                <button onClick={applyAllPriceDrops} style={{padding:"8px 16px",background:"rgba(110,231,183,0.15)",border:"1px solid rgba(110,231,183,0.4)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Apply All</button>
+                <button onClick={()=>setShowPdReport(false)} style={{padding:"8px 16px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Close</button>
+              </div>
+            </div>
+            {pdReport.length === 0
+              ? <div style={{textAlign:"center",color:"var(--muted)",padding:32}}>No price drops found — all prices are current.</div>
+              : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {pdReport.map((item,i)=>(
+                    <div key={i} style={{background:"var(--bg)",border:"1px solid rgba(110,231,183,0.15)",borderRadius:4,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:14,color:"var(--text)",marginBottom:4}}>{item.name}</div>
+                        <div style={{fontSize:11,color:"var(--dim2)"}}>VIN: {item.vin}{item.store ? " · " + item.store : ""}</div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        <div style={{fontSize:13,color:"var(--muted2)",textDecoration:"line-through"}}>${item.oldPrice.toLocaleString()}</div>
+                        <div style={{fontSize:15,color:"#6fcf97",fontWeight:500}}>${item.newPrice.toLocaleString()}</div>
+                        <div style={{fontSize:11,color:"#6fcf97",marginTop:2}}>▼ ${item.drop.toLocaleString()} ({item.pct}%)</div>
+                      </div>
+                      <button onClick={()=>applyPriceDrop(item)} style={{padding:"7px 14px",background:"rgba(110,231,183,0.1)",border:"1px solid rgba(110,231,183,0.3)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer",flexShrink:0}}>Apply</button>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+        </div>
+      )}
+*/
     const withStore = importData.map((v, i) => ({...v, store: v.store || importStore || '', id: Date.now() + i}));
     const updated = [...vehicles, ...withStore];
     setVehicles(updated); saveToLS(updated);
@@ -1504,18 +1625,55 @@ function RecallMonitorView() {
   const [sendingEmail, setSendingEmail] = React.useState(false);
   const [emailStatus, setEmailStatus] = React.useState(null);
   const [emailTo, setEmailTo] = React.useState('adam@pinnaclecrm.ai');
-
+  const [decoding, setDecoding] = React.useState(false);
+ 
   React.useEffect(() => {
     const inv = JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]');
     setVehicles(inv);
     const saved = JSON.parse(localStorage.getItem('pinnacle_recall_results') || 'null');
     if (saved) { setResults(saved.results || {}); setLastChecked(saved.checkedAt); }
   }, []);
-
+ 
+  // Auto-decode VINs that are missing year/make/model
+  const decodeVehicleInfo = async (vehicleList) => {
+    let updated = [...vehicleList];
+    let changed = false;
+    for (let i = 0; i < updated.length; i++) {
+      const v = updated[i];
+      if (v.vin && v.vin.length === 17 && (!v.year || !v.make || !v.model)) {
+        try {
+          const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${v.vin}?format=json`);
+          const data = await res.json();
+          const r = data.Results?.[0];
+          if (r && r.ModelYear) {
+            updated[i] = {
+              ...v,
+              year:  v.year  || r.ModelYear || '',
+              make:  v.make  || (r.Make  ? r.Make.charAt(0).toUpperCase() + r.Make.slice(1).toLowerCase()  : ''),
+              model: v.model || (r.Model ? r.Model.charAt(0).toUpperCase() + r.Model.slice(1).toLowerCase() : ''),
+              trim:  v.trim  || r.Trim   || '',
+            };
+            changed = true;
+          }
+        } catch(e) {}
+      }
+    }
+    if (changed) {
+      localStorage.setItem('pinnacle_inventory', JSON.stringify(updated));
+    }
+    return updated;
+  };
+ 
   const checkRecalls = async () => {
     setChecking(true);
-    const toCheck = vehicles.filter(v => v.vin && v.vin.length === 17);
-    const newResults = {...results};
+    // First: decode any vehicles missing year/make/model
+    setDecoding(true);
+    const decodedVehicles = await decodeVehicleInfo(vehicles);
+    setVehicles(decodedVehicles);
+    setDecoding(false);
+ 
+    const toCheck = decodedVehicles.filter(v => v.vin && v.vin.length === 17);
+    const newResults = { ...results };
     for (const v of toCheck) {
       try {
         const res = await fetch(`https://api.nhtsa.gov/recalls/vehicle?vin=${v.vin}`);
@@ -1524,11 +1682,18 @@ function RecallMonitorView() {
       } catch(e) { newResults[v.vin] = []; }
     }
     const checkedAt = new Date().toISOString();
-    setResults(newResults); setLastChecked(checkedAt);
-    localStorage.setItem('pinnacle_recall_results', JSON.stringify({results:newResults, checkedAt}));
+    setResults(newResults);
+    setLastChecked(checkedAt);
+    localStorage.setItem('pinnacle_recall_results', JSON.stringify({ results: newResults, checkedAt }));
     setChecking(false);
   };
-
+ 
+  // Helper: display name for a vehicle (VIN as fallback)
+  const vName = (v) => {
+    const parts = [v.year, v.make, v.model, v.trim].filter(Boolean);
+    return parts.length > 0 ? parts.join(' ') : (v.vin || 'Unknown Vehicle');
+  };
+ 
   const sendRecallAlert = async () => {
     setSendingEmail(true); setEmailStatus(null);
     const recalledVehicles = vehicles.filter(v => v.vin && (results[v.vin]||[]).length > 0);
@@ -1536,8 +1701,8 @@ function RecallMonitorView() {
 <h2 style="color:#d4a843;font-family:Georgia,serif;border-bottom:2px solid #d4a843;padding-bottom:8px">Pinnacle CRM — NHTSA Recall Alert</h2>
 <p style="color:#555">The following vehicles in your inventory have active NHTSA recalls as of ${new Date(lastChecked).toLocaleString()}:</p>
 ${recalledVehicles.map(v => `<div style="margin:16px 0;padding:16px;background:#fff8f0;border-left:4px solid #d4a843;border-radius:4px">
-<strong style="font-size:16px">${v.year} ${v.make} ${v.model} ${v.trim||''}</strong><br/>
-<span style="color:#888;font-size:13px">VIN: ${v.vin}${v.store?' · '+v.store:''}</span><br/>
+<strong style="font-size:16px">${vName(v)}</strong><br/>
+<span style="color:#888;font-size:13px">VIN: ${v.vin}${v.store ? ' · ' + v.store : ''}</span><br/>
 <strong style="color:#c0392b;margin-top:8px;display:block">${results[v.vin].length} Active Recall${results[v.vin].length!==1?'s':''}</strong>
 ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;border:1px solid #e0d0c0;border-radius:3px;font-size:13px">
 <strong>${r.Component||r.component||'Recall'}</strong>: ${r.Summary||r.summary||r.Consequence||r.consequence||'See NHTSA.gov for full details'}
@@ -1548,7 +1713,7 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
     try {
       const res = await fetch('/.netlify/functions/send-email', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({to:emailTo, subject:`⚠️ NHTSA Recall Alert — ${recalledVehicles.length} Vehicle${recalledVehicles.length!==1?'s':''} Affected`, html})
+        body: JSON.stringify({ to: emailTo, subject: `⚠️ NHTSA Recall Alert — ${recalledVehicles.length} Vehicle${recalledVehicles.length!==1?'s':''} Affected`, html })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -1556,11 +1721,11 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
     } catch(e) { setEmailStatus('error:' + e.message); }
     setSendingEmail(false);
   };
-
+ 
   const withRecalls = vehicles.filter(v => v.vin && (results[v.vin]||[]).length > 0);
-  const noRecalls = vehicles.filter(v => v.vin && results[v.vin] && results[v.vin].length === 0);
-  const unchecked = vehicles.filter(v => !v.vin || !results[v.vin]);
-
+  const noRecalls  = vehicles.filter(v => v.vin && results[v.vin] && results[v.vin].length === 0);
+  const unchecked  = vehicles.filter(v => !v.vin || !results[v.vin]);
+ 
   return (
     <div style={{maxWidth:860}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
@@ -1570,12 +1735,13 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           {lastChecked && <span style={{fontSize:11,color:"var(--dim2)"}}>Last checked: {new Date(lastChecked).toLocaleDateString()}</span>}
-          <button onClick={checkRecalls} disabled={checking||vehicles.length===0} style={{padding:"10px 22px",background:checking?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:checking?"var(--dim2)":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:checking?"not-allowed":"pointer"}}>
-            {checking ? "Checking NHTSA…" : "Run Recall Check"}
+          <button onClick={checkRecalls} disabled={checking||vehicles.length===0}
+            style={{padding:"10px 22px",background:checking?"rgba(201,168,76,0.08)":"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:checking?"var(--dim2)":gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:checking?"not-allowed":"pointer"}}>
+            {decoding ? "Decoding VINs…" : checking ? "Checking NHTSA…" : "Run Recall Check"}
           </button>
         </div>
       </div>
-
+ 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:2,marginBottom:16}}>
         {[[withRecalls.length,"Active Recalls","#fca5a5","rgba(252,165,165,0.2)"],[noRecalls.length,"Clear","#6fcf97","rgba(110,231,183,0.15)"],[unchecked.length,"Not Checked","var(--muted)","var(--w06)"]].map(([n,lbl,col,bg])=>(
           <div key={lbl} style={{background:"var(--surface)",border:`1px solid ${bg}`,borderRadius:4,padding:"14px 18px",textAlign:"center"}}>
@@ -1584,14 +1750,16 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
           </div>
         ))}
       </div>
-
+ 
       {withRecalls.length > 0 && (
         <div style={{background:"rgba(252,165,165,0.04)",border:"1px solid rgba(252,165,165,0.2)",borderRadius:4,padding:18,marginBottom:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
             <div style={{fontSize:10,letterSpacing:"0.35em",color:"#fca5a5",textTransform:"uppercase"}}>⚠ {withRecalls.length} Vehicle{withRecalls.length!==1?"s":""} with Active Recalls</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com" style={{padding:"6px 10px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:12,width:200,fontFamily:"'Jost',sans-serif"}} />
-              <button onClick={sendRecallAlert} disabled={sendingEmail} style={{padding:"7px 16px",background:"rgba(252,165,165,0.1)",border:"1px solid rgba(252,165,165,0.35)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>
+              <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com"
+                style={{padding:"6px 10px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--text)",fontSize:12,width:200,fontFamily:"'Jost',sans-serif"}} />
+              <button onClick={sendRecallAlert} disabled={sendingEmail}
+                style={{padding:"7px 16px",background:"rgba(252,165,165,0.1)",border:"1px solid rgba(252,165,165,0.35)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>
                 {sendingEmail?"Sending…":"Email Alert"}
               </button>
             </div>
@@ -1601,7 +1769,7 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
             {withRecalls.map((v,i)=>(
               <div key={i} style={{background:"var(--surface)",border:"1px solid rgba(252,165,165,0.15)",borderRadius:3,padding:"12px 16px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                  <span style={{fontSize:14,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                  <span style={{fontSize:14,color:"var(--text)"}}>{vName(v)}</span>
                   <span style={{fontSize:10,color:"#fca5a5",border:"1px solid rgba(252,165,165,0.3)",padding:"2px 8px",borderRadius:2}}>{results[v.vin].length} Recall{results[v.vin].length!==1?"s":""}</span>
                 </div>
                 <div style={{fontSize:11,color:"var(--dim2)",marginBottom:8}}>VIN: {v.vin}{v.store?` · ${v.store}`:""}</div>
@@ -1616,16 +1784,16 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
           </div>
         </div>
       )}
-
+ 
       {noRecalls.length > 0 && (
         <div style={{marginBottom:14}}>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:"#6fcf97",textTransform:"uppercase",marginBottom:10}}>Clear Vehicles</div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             {noRecalls.map((v,i)=>(
               <div key={i} style={{background:"var(--surface)",border:"1px solid rgba(110,231,183,0.08)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:"var(--text)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <span style={{fontSize:13,color:"var(--text)"}}>{vName(v)}</span>
                 <div style={{display:"flex",gap:14,alignItems:"center"}}>
-                  {v.store&&<span style={{fontSize:10,color:"var(--dim2)"}}>{v.store}</span>}
+                  {v.store && <span style={{fontSize:10,color:"var(--dim2)"}}>{v.store}</span>}
                   <span style={{fontSize:10,color:"#6fcf97",border:"1px solid rgba(110,231,183,0.2)",padding:"2px 8px",borderRadius:2}}>✓ Clear</span>
                 </div>
               </div>
@@ -1633,21 +1801,21 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
           </div>
         </div>
       )}
-
+ 
       {unchecked.length > 0 && (
         <div>
           <div style={{fontSize:9,letterSpacing:"0.35em",color:"var(--muted)",textTransform:"uppercase",marginBottom:10}}>Not Yet Checked</div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             {unchecked.map((v,i)=>(
               <div key={i} style={{background:"var(--surface)",border:"1px solid rgba(255,255,255,0.04)",borderRadius:3,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:"var(--muted)"}}>{v.year} {v.make} {v.model} {v.trim}</span>
+                <span style={{fontSize:13,color:"var(--muted)"}}>{vName(v)}</span>
                 <span style={{fontSize:10,color:"var(--dim3)"}}>{v.vin?"Run check above":"No VIN on file"}</span>
               </div>
             ))}
           </div>
         </div>
       )}
-
+ 
       {vehicles.length === 0 && (
         <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,padding:48,textAlign:"center",color:"var(--dim2)",fontSize:13}}>
           No inventory vehicles found. Add vehicles in the Inventory tab first, then run a recall check here.
@@ -1656,7 +1824,7 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
     </div>
   );
 }
-
+ 
 // ── STORE INVENTORY MONITOR ─────────────────────────────────────────
 function StoreInventoryView({clients}) {
   const [vehicles, setVehicles] = React.useState([]);
@@ -2218,6 +2386,141 @@ function SalesView() {
   );
 }
 
+ function ClientPDFImport({ onImport }) {
+  const [open, setOpen] = React.useState(false);
+  const [dragging, setDragging] = React.useState(false);
+  const [parsing, setParsing] = React.useState(false);
+  const [preview, setPreview] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const dropRef = React.useRef(null);
+ 
+  if (!open) return (
+    <button onClick={()=>setOpen(true)} style={{padding:"10px 18px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>
+      📄 Import PDF
+    </button>
+  );
+ 
+  const parsePDF = async (file) => {
+    setParsing(true); setError(null); setPreview(null);
+    try {
+      const pdfjsLib = window['pdfjs-dist/build/pdf'];
+      if (!pdfjsLib) throw new Error('PDF.js not loaded — make sure you added the script tag to <head>');
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let p = 1; p <= Math.min(pdf.numPages, 6); p++) {
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        fullText += tc.items.map(i => i.str).join(' ') + '\n';
+      }
+ 
+      const get = (regex) => { const m = fullText.match(regex); return m ? m[1].trim() : ''; };
+ 
+      // Name patterns
+      const nameRaw = get(/(?:Customer|Buyer|Client|Name)[:\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})/i)
+                   || get(/([A-Z][A-Z]+,\s*[A-Z][A-Z]+)/); // LAST, FIRST style
+      let first = '', last = '';
+      if (nameRaw) {
+        if (nameRaw.includes(',')) { const p = nameRaw.split(','); last = p[0].trim(); first = p[1]?.trim() || ''; }
+        else { const p = nameRaw.trim().split(/\s+/); first = p[0]; last = p.slice(1).join(' '); }
+      }
+ 
+      // Phone / email
+      const cell = get(/(?:Cell|Mobile|Phone)[:\s]*([\(\d][\d\(\)\-\.\s]{9,13}\d)/i)
+                || fullText.match(/\b(\(?\d{3}\)?[\s\-\.]\d{3}[\s\-\.]\d{4})\b/)?.[1] || '';
+      const email = fullText.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/)?.[1] || '';
+ 
+      // Address
+      const street = get(/(?:Address|Street)[:\s]*(\d+[^,\n]{3,40})/i)
+                  || fullText.match(/(\d{2,5}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s+(?:St|Ave|Blvd|Dr|Rd|Ln|Way|Ct|Pl)\.?)/i)?.[1] || '';
+      const cityStateZip = fullText.match(/([A-Za-z\s]{2,20}),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/);
+      const city  = cityStateZip?.[1]?.trim() || '';
+      const state = cityStateZip?.[2] || '';
+      const zip   = cityStateZip?.[3] || '';
+ 
+      // Vehicle of interest
+      const vehicleRaw = get(/(?:Vehicle(?:\s+of\s+Interest)?|Model(?:\s+of\s+Interest)?|Interest)[:\s]+(\d{4}\s+[A-Za-z][A-Za-z\s]{2,25})/i);
+ 
+      // Source
+      const sourceMap = { 'walk':' Walk-in','phone':'Phone','web':'Website','refer':'Referral','autotrader':'AutoTrader','cars.com':'Cars.com','email':'Email' };
+      const srcRaw = get(/(?:Source|How\s+(?:did\s+you|Heard))[:\s]+([A-Za-z\s.]+?)(?:\n|$)/i).toLowerCase();
+      const lead_source = Object.entries(sourceMap).find(([k])=>srcRaw.includes(k))?.[1] || '';
+ 
+      // Notes — capture any "Notes" or "Comments" block
+      const notes = get(/(?:Notes|Comments|Remarks)[:\s]+([^\n]{10,200})/i);
+ 
+      // VIN from PDF (trade or customer vehicle)
+      const tradeVin = fullText.match(/(?:Trade[\s\-]?(?:In)?[\s\-]?VIN|VIN)[:\s]*([A-HJ-NPR-Z0-9]{17})/i)?.[1] || '';
+      const tradeYearMakeModel = get(/(?:Trade[\s\-]?In|Trade)[\s\:]+(\d{4}\s+[A-Za-z][A-Za-z\s]{2,25})/i);
+      let tradeYear = '', tradeMake = '', tradeModel = '';
+      if (tradeYearMakeModel) {
+        const tp = tradeYearMakeModel.trim().split(/\s+/);
+        tradeYear = tp[0]; tradeMake = tp[1]; tradeModel = tp.slice(2).join(' ');
+      }
+ 
+      setPreview({
+        first_name: first, last_name: last, cell: cell.replace(/\D/g,'').replace(/(\d{3})(\d{3})(\d{4})/,'($1) $2-$3'),
+        primary_email: email, street, city, state, zip,
+        vehicle_of_interest: vehicleRaw, lead_source, stage: 'New Lead', notes,
+        trade_vin: tradeVin, trade_year: tradeYear, trade_make: tradeMake, trade_model: tradeModel
+      });
+    } catch(e) { setError(e.message); }
+    setParsing(false);
+  };
+ 
+  const onDrop = (e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f?.type==='application/pdf') parsePDF(f); };
+ 
+  const fieldLabel = { first_name:'First Name', last_name:'Last Name', cell:'Cell', primary_email:'Email', street:'Street', city:'City', state:'State', zip:'Zip', vehicle_of_interest:'Vehicle Interest', lead_source:'Source', notes:'Notes', trade_vin:'Trade VIN', trade_year:'Trade Year', trade_make:'Trade Make', trade_model:'Trade Model' };
+ 
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"var(--surface)",borderRadius:6,padding:28,width:"100%",maxWidth:620,maxHeight:"85vh",overflowY:"auto",border:"1px solid rgba(201,168,76,0.2)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+          <div>
+            <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Import</div>
+            <h2 style={{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:"var(--text)"}}>Client PDF Import</h2>
+          </div>
+          <button onClick={()=>{setOpen(false);setPreview(null);}} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:18,padding:4}}>✕</button>
+        </div>
+ 
+        {!preview && (
+          <div ref={dropRef}
+            onDragOver={e=>{e.preventDefault();setDragging(true);}}
+            onDragLeave={()=>setDragging(false)}
+            onDrop={onDrop}
+            onClick={()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept='.pdf'; inp.onchange=e=>{ if(e.target.files[0]) parsePDF(e.target.files[0]); }; inp.click(); }}
+            style={{border:`2px dashed ${dragging?gold:"rgba(201,168,76,0.3)"}`,borderRadius:6,padding:48,textAlign:"center",cursor:"pointer",background:dragging?"rgba(201,168,76,0.05)":"var(--bg)",transition:"all 0.2s",marginBottom:16}}>
+            <div style={{fontSize:32,marginBottom:12}}>📄</div>
+            <div style={{fontSize:14,color:"var(--text)",marginBottom:6}}>Drop deal sheet PDF here</div>
+            <div style={{fontSize:12,color:"var(--muted)"}}>or click to browse · Supports CDK, Reynolds, Elead formats</div>
+          </div>
+        )}
+ 
+        {parsing && <div style={{textAlign:"center",padding:32,color:"var(--muted)"}}>Parsing PDF…</div>}
+        {error && <div style={{color:"#fca5a5",fontSize:12,marginBottom:16}}>⚠ {error}</div>}
+ 
+        {preview && (
+          <div>
+            <div style={{fontSize:11,color:"#6fcf97",marginBottom:16}}>✓ Fields extracted — review and import</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+              {Object.entries(fieldLabel).map(([key,label])=>(
+                <div key={key} style={{gridColumn: ['notes','street','vehicle_of_interest'].includes(key)?'span 2':'span 1'}}>
+                  <div style={{fontSize:10,letterSpacing:"0.28em",color:gold,textTransform:"uppercase",marginBottom:5}}>{label}</div>
+                  <input value={preview[key]||''} onChange={e=>setPreview(p=>({...p,[key]:e.target.value}))}
+                    style={{width:"100%",padding:"9px 12px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:13,fontFamily:"'Jost',sans-serif"}} />
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button onClick={()=>setPreview(null)} style={{padding:"10px 20px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>← Re-scan</button>
+              <button onClick={()=>{onImport(preview);setOpen(false);setPreview(null);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.18)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>Import Client →</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 // ── MAIN APP ───────────────────────────────────────────────────────
 function App() {
   const [view, setView] = useState("list");
@@ -2373,7 +2676,7 @@ function App() {
         {view==="recalls" && <RecallMonitorView />}
         {view==="stores" && <StoreInventoryView clients={clients} />}
         {view==="appraise" && <AppraisalView />}
-        {view==="sales" && <SalesView />}
+        {view==="sales" && <MyNumbersView />}
         {view==="detail" && selected && <Detail client={selected} onBack={()=>nav("list")} onEdit={()=>setView("edit")} onDelete={handleDelete} />}
 
         {view==="edit" && selected && <>
