@@ -1023,6 +1023,30 @@ const priceDropRef = React.useRef(null);
   const [showPdReport, setShowPdReport] = React.useState(false);  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',store:'',status:'Available',notes:''};
   const [form, setForm] = React.useState(emptyVehicle);
 
+  // Dedup
+  const [dupNotify, setDupNotify] = React.useState(null);
+
+  const cleanDuplicates = () => {
+    const seen = new Map();
+    vehicles.forEach(v => {
+      const key = v.vin && v.vin.trim().length > 6
+        ? 'vin:' + v.vin.trim().toUpperCase()
+        : 'nv:' + [v.year,v.make,v.model,v.trim].join('|').toLowerCase();
+      if (seen.has(key)) {
+        const prev = seen.get(key);
+        const scoreOf = x => [x.year,x.make,x.model,x.trim,x.color,x.store,x.notes,x.vin].filter(Boolean).join('').length;
+        if (scoreOf(v) > scoreOf(prev)) seen.set(key, v);
+      } else {
+        seen.set(key, v);
+      }
+    });
+    const deduped = [...seen.values()];
+    const removed = vehicles.length - deduped.length;
+    if (removed > 0) { setVehicles(deduped); saveToLS(deduped); }
+    setDupNotify(removed > 0 ? 'Removed ' + removed + ' duplicate' + (removed!==1?'s':'') : 'No duplicates found');
+    setTimeout(() => setDupNotify(null), 3500);
+  };
+
   // Smart Sync state
   const [showSync, setShowSync] = React.useState(false);
   const [syncStage, setSyncStage] = React.useState(null); // null | parsing | comparing | recalls | done
@@ -1361,10 +1385,18 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} style={{display:"none"}} />
           <input ref={priceDropRef} type="file" accept=".csv,.xlsx,.xls" onChange={handlePriceDropFile} style={{display:"none"}} />
           <input ref={syncFileRef} type="file" accept=".csv,.xlsx,.xls" onChange={e=>{const f=e.target.files[0];if(f){setShowSync(true);runFullSync(f);}e.target.value='';}} style={{display:"none"}} />
+          <button onClick={cleanDuplicates} title="Find and remove duplicate vehicles" style={{padding:"10px 18px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Clean Dupes</button>
           <button onClick={()=>{setShowAdd(true);setForm(emptyVehicle);setEditIdx(null);}} style={{padding:"10px 18px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>+ Add</button>
           <button onClick={()=>{setSyncStage(null);setSyncReport(null);setShowSync(true);}} style={{padding:"11px 24px",background:"rgba(201,168,76,0.18)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer",fontWeight:500}}>⟳ Smart Sync</button>
         </div>
       </div>
+
+      {/* Dedup toast */}
+      {dupNotify && (
+        <div style={{marginBottom:14,padding:"11px 18px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.25)",borderRadius:4,fontSize:12,color:gold,display:"flex",alignItems:"center",gap:8}}>
+          <span>✓</span><span>{dupNotify}</span>
+        </div>
+      )}
 
       {/* Store Filter */}
       {vehicles.length > 0 && storeOptions.length > 1 && (
