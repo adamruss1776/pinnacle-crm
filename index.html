@@ -450,6 +450,17 @@ function Setup() {
   do_not_text boolean default false,
   do_not_email boolean default false,
   notes text
+);
+
+create table deals (
+  id uuid default gen_random_uuid() primary key,
+  created_at timestamptz default now(),
+  local_id bigint unique,
+  date text, vehicle text, stock_num text,
+  type text default 'new',
+  front numeric default 0,
+  back numeric default 0,
+  notes text
 );`}</pre>
         </div>
       </div>
@@ -1999,6 +2010,43 @@ function SalesView() {
   const [goals, setGoals] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('pinnacle_sales_goals') || '{"monthlyUnits":0,"monthlyGross":0}'); } catch { return {monthlyUnits:0,monthlyGross:0}; }
   });
+  const [syncStatus, setSyncStatus] = React.useState(null); // null | 'saving' | 'saved' | 'error'
+
+  // On mount: pull deals from Supabase and merge with localStorage (Supabase wins on conflict)
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await sb.from('deals').select('*').order('date', { ascending: false });
+        if (error || !data) return;
+        if (data.length > 0) {
+          const merged = data.map(d => ({
+            id: d.local_id || d.id, date: d.date, vehicle: d.vehicle,
+            stockNum: d.stock_num, type: d.type,
+            front: Number(d.front) || 0, back: Number(d.back) || 0, notes: d.notes || ''
+          }));
+          setDeals(merged);
+          localStorage.setItem('pinnacle_sales_deals', JSON.stringify(merged));
+        }
+      } catch(e) {} // Supabase unavailable — localStorage fallback is already loaded
+    })();
+  }, []);
+
+  const persistDeals = async (updated) => {
+    localStorage.setItem('pinnacle_sales_deals', JSON.stringify(updated));
+    setSyncStatus('saving');
+    try {
+      // Upsert all deals to Supabase deals table
+      const rows = updated.map(d => ({
+        local_id: typeof d.id === 'number' ? d.id : null,
+        date: d.date, vehicle: d.vehicle || '', stock_num: d.stockNum || '',
+        type: d.type || 'new', front: Number(d.front) || 0, back: Number(d.back) || 0,
+        notes: d.notes || ''
+      }));
+      const { error } = await sb.from('deals').upsert(rows, { onConflict: 'local_id', ignoreDuplicates: false });
+      setSyncStatus(error ? 'error' : 'saved');
+    } catch(e) { setSyncStatus('error'); }
+    setTimeout(() => setSyncStatus(null), 2500);
+  };
   const [showAdd, setShowAdd] = React.useState(false);
   const [showGoals, setShowGoals] = React.useState(false);
   const [editIdx, setEditIdx] = React.useState(null);
@@ -2019,9 +2067,9 @@ function SalesView() {
                  || get(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
     let dealDate = new Date().toISOString().split('T')[0];
     if (rawDate) { const d = new Date(rawDate); if (!isNaN(d)) dealDate = d.toISOString().split('T')[0]; }
-    // Vehicle — grab year + words until bodytype digits or newline (works across all formats)
-    const vehicle = get(/(\d{4}\s+[A-Za-z][A-Za-z\s]{4,40}?)(?:\s*\d+\s*dr|\s*4WD|\s*AWD|\n|VIN|Stock|Mileage)/i)
-                 || get(/(\d{4}\s+[A-Za-z][A-Za-z\s]{4,40}?)(?:\s{2,})/i);
+    // Vehicle — only match real model years (1950-2029) to avoid false matches like "0946"
+    const vehicle = get(/((?:19[5-9]|20[0-2])\d\s+[A-Za-z][A-Za-z\s]{4,40}?)(?:\s*\d+\s*dr|\s*4WD|\s*AWD|\n|VIN|Stock|Mileage)/i)
+                 || get(/((?:19[5-9]|20[0-2])\d\s+[A-Za-z][A-Za-z\s]{4,40}?)(?:\s{2,})/i);
     // Stock number
     const stockNum = get(/Stock\s*(?:Number|#|No\.?)[:\s]+([A-Z0-9\-]{4,14})/i)
                   || get(/Stock[:\s]+([A-Z0-9\-]{4,14})/i);
@@ -2107,14 +2155,14 @@ function SalesView() {
       ? deals.map((d,i) => i===editIdx ? {...clean, id:deals[editIdx].id} : d)
       : [...deals, {...clean, id:Date.now()}];
     setDeals(updated);
-    localStorage.setItem('pinnacle_sales_deals', JSON.stringify(updated));
+    persistDeals(updated);
     setShowAdd(false); setEditIdx(null); setForm(emptyDeal);
   };
 
   const removeDeal = (idx) => {
     const updated = deals.filter((_,i) => i!==idx);
     setDeals(updated);
-    localStorage.setItem('pinnacle_sales_deals', JSON.stringify(updated));
+    persistDeals(updated);
   };
 
   const saveGoals = () => {
@@ -2201,6 +2249,7 @@ function SalesView() {
           <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>My Numbers</h1>
         </div>
         <div style={{display:"flex",gap:10}}>
+          {syncStatus&&<span style={{fontSize:10,letterSpacing:"0.15em",color:syncStatus==='saved'?"#6fcf97":syncStatus==='error'?"#fca5a5":gold,alignSelf:"center"}}>{syncStatus==='saving'?"Syncing…":syncStatus==='saved'?"✓ Saved to cloud":"⚠ Offline — saved locally"}</span>}
           <button onClick={()=>{setGoalForm({...goals});setShowGoals(true);}} style={{padding:"10px 18px",background:"var(--w04)",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Set Goals</button>
           <button onClick={()=>{setPdfPreview(null);setPdfError(null);setShowPdfImport(true);}} style={{padding:"10px 18px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>📄 Import Sheet</button>
           <button onClick={()=>{setForm(emptyDeal);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Log Deal</button>
@@ -2509,7 +2558,7 @@ function SalesView() {
                       const clean={...pdfPreview,front:Number(pdfPreview.front)||0,back:Number(pdfPreview.back)||0,id:Date.now()};
                       const updated=[...deals,clean];
                       setDeals(updated);
-                      localStorage.setItem('pinnacle_sales_deals',JSON.stringify(updated));
+                      persistDeals(updated);
                       setShowPdfImport(false);setPdfPreview(null);setPdfError(null);
                     }} style={{padding:"9px 26px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>Add to My Numbers</button>
                   </div>
