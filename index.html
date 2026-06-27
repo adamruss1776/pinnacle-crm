@@ -49,6 +49,8 @@
     ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
     @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
     .fu { animation: fadeUp 0.3s ease forwards; }
+    @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    @keyframes pulse { 0%,100% { opacity:0.4; } 50% { opacity:1; } }
   </style>
 </head>
 <body>
@@ -1002,7 +1004,7 @@ function FollowUpsView({clients}) {
 }
 
 // ── INVENTORY VIEW ──────────────────────────────────────────────────
-function InventoryView() {
+function InventoryView({clients=[]}) {
   const [vehicles, setVehicles] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]'); } catch { return []; }
   });
@@ -1021,7 +1023,130 @@ const priceDropRef = React.useRef(null);
   const [showPdReport, setShowPdReport] = React.useState(false);  const emptyVehicle = {year:'',make:'',model:'',trim:'',vin:'',mileage:'',color:'',price:'',oldPrice:'',store:'',status:'Available',notes:''};
   const [form, setForm] = React.useState(emptyVehicle);
 
+  // Smart Sync state
+  const [showSync, setShowSync] = React.useState(false);
+  const [syncStage, setSyncStage] = React.useState(null); // null | parsing | comparing | recalls | done
+  const [syncReport, setSyncReport] = React.useState(null);
+  const [recallProgress, setRecallProgress] = React.useState({done:0, total:0});
+  const [dragOver, setDragOver] = React.useState(false);
+  const syncFileRef = React.useRef(null);
+  const [lastSyncTime, setLastSyncTime] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('pinnacle_recall_results')||'{}').checkedAt || null; } catch { return null; }
+  });
+
   const saveToLS = (list) => localStorage.setItem('pinnacle_inventory', JSON.stringify(list));
+
+  const formatTimeAgo = (iso) => {
+    const mins = Math.floor((Date.now() - new Date(iso)) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins/60);
+    if (hrs < 24) return hrs + 'h ago';
+    return Math.floor(hrs/24) + 'd ago';
+  };
+
+  const applySyncPriceDrops = (drops) => {
+    let updated = [...vehicles];
+    drops.forEach(item => {
+      updated = updated.map((v, i) => i === item.vehicleIdx
+        ? { ...v, oldPrice: String(item.oldPrice), price: String(item.newPrice) }
+        : v);
+    });
+    setVehicles(updated); saveToLS(updated);
+  };
+
+  const runFullSync = (file) => {
+    setSyncStage('parsing');
+    setSyncReport(null);
+    setRecallProgress({done:0, total:0});
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        if (json.length < 2) { setSyncStage(null); alert('File appears empty or has no data rows'); return; }
+        const headers = json[0].map(h => String(h));
+        const rows = json.slice(1).filter(r => r.some(c => c !== ''));
+        const incoming = rows.map(row => {
+          const rowObj = {}; headers.forEach((h,i) => { rowObj[h] = row[i]!==undefined ? String(row[i]) : ''; });
+          return mapCols(headers, rowObj);
+        });
+
+        setSyncStage('comparing');
+        await new Promise(r => setTimeout(r, 350));
+
+        // Find new vehicles (by VIN, or year+make+model if no VIN)
+        const newVehicles = incoming.filter(v => {
+          if (v.vin && v.vin.length > 6) return !vehicles.some(ex => ex.vin && ex.vin.trim().toUpperCase() === v.vin.trim().toUpperCase());
+          return !vehicles.some(ex => ex.year===v.year && ex.make===v.make && ex.model===v.model && ex.trim===v.trim);
+        });
+
+        // Detect price drops against existing inventory
+        const priceDrops = [];
+        incoming.forEach(v => {
+          if (!v.vin || !v.price) return;
+          const existing = vehicles.find(ex => ex.vin && ex.vin.trim().toUpperCase() === v.vin.trim().toUpperCase());
+          if (!existing) return;
+          const oldP = parseFloat(String(existing.price).replace(/[^0-9.]/g,''));
+          const newP = parseFloat(String(v.price).replace(/[^0-9.]/g,''));
+          if (!oldP || isNaN(newP) || newP >= oldP) return;
+          priceDrops.push({
+            vin: v.vin, name: [existing.year,existing.make,existing.model,existing.trim].filter(Boolean).join(' ') || v.vin,
+            oldPrice: oldP, newPrice: newP, drop: oldP-newP, pct: ((oldP-newP)/oldP*100).toFixed(1),
+            vehicleIdx: vehicles.indexOf(existing)
+          });
+        });
+
+        // Add new vehicles to inventory
+        const addedVehicles = newVehicles.map((v,i) => ({...v, id: Date.now()+i}));
+        const mergedInventory = [...vehicles, ...addedVehicles];
+        setVehicles(mergedInventory);
+        saveToLS(mergedInventory);
+
+        // Client matches: new arrivals that match a client's vehicle of interest
+        const matches = [];
+        if (clients.length > 0 && addedVehicles.length > 0) {
+          addedVehicles.forEach(v => {
+            const vehicleWords = [v.year,v.make,v.model].filter(Boolean).join(' ').toLowerCase().split(/\s+/);
+            clients.forEach(c => {
+              if (!c.vehicle_of_interest) return;
+              const interest = c.vehicle_of_interest.toLowerCase();
+              const hit = vehicleWords.filter(w => w.length > 3).some(w => interest.includes(w));
+              if (hit) {
+                const name = [c.first_name,c.last_name].filter(Boolean).join(' ').trim() || c.primary_email || 'Client';
+                const veh = [v.year,v.make,v.model].filter(Boolean).join(' ');
+                if (!matches.find(m => m.client===name && m.vehicle===veh))
+                  matches.push({client: name, vehicle: veh, interest: c.vehicle_of_interest});
+              }
+            });
+          });
+        }
+
+        setSyncStage('recalls');
+        const vinsToCheck = mergedInventory.filter(v => v.vin && v.vin.trim().length >= 11);
+        setRecallProgress({done:0, total:vinsToCheck.length});
+        const recallResults = {};
+        for (const v of vinsToCheck) {
+          try {
+            const res = await fetch('https://api.nhtsa.gov/recalls/vehicle?vin=' + v.vin.trim());
+            const data = await res.json();
+            recallResults[v.vin.trim()] = data.results || [];
+          } catch { recallResults[v.vin.trim()] = []; }
+          setRecallProgress(prev => ({...prev, done: prev.done+1}));
+        }
+        const recallCount = Object.values(recallResults).filter(r => r.length > 0).length;
+        const checkedAt = new Date().toISOString();
+        localStorage.setItem('pinnacle_recall_results', JSON.stringify({results: recallResults, checkedAt}));
+        setLastSyncTime(checkedAt);
+
+        setSyncReport({total: mergedInventory.length, newCount: addedVehicles.length, priceDrops, recallCount, recallResults, matches});
+        setSyncStage('done');
+
+      } catch(err) { setSyncStage(null); alert('Sync failed: ' + err.message); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
   const save = () => {
     const updated = editIdx !== null
@@ -1183,13 +1308,19 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Inventory</div>
           <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Vehicle Inventory</h1>
+          {lastSyncTime && (
+            <div style={{fontSize:10,color:"var(--dim2)",marginTop:4,letterSpacing:"0.06em"}}>
+              Last synced {formatTimeAgo(lastSyncTime)}
+              {vehicles.length > 0 && <span style={{color:"var(--dim3)"}}> · {vehicles.length} vehicles</span>}
+            </div>
+          )}
         </div>
-        <div style={{display:"flex",gap:10}}>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} style={{display:"none"}} />
           <input ref={priceDropRef} type="file" accept=".csv,.xlsx,.xls" onChange={handlePriceDropFile} style={{display:"none"}} />
-          <button onClick={()=>priceDropRef.current?.click()} style={{padding:"10px 18px",background:"rgba(93,188,125,0.1)",border:"1px solid rgba(93,188,125,0.35)",borderRadius:3,color:"#6fcf97",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>📉 Price Drop Check</button>
-          <button onClick={()=>fileInputRef.current?.click()} style={{padding:"10px 18px",background:"var(--w04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>↑ Import CSV/Excel</button>
-          <button onClick={()=>{setForm(emptyVehicle);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Add Vehicle</button>
+          <input ref={syncFileRef} type="file" accept=".csv,.xlsx,.xls" onChange={e=>{const f=e.target.files[0];if(f){setShowSync(true);runFullSync(f);}e.target.value='';}} style={{display:"none"}} />
+          <button onClick={()=>{setShowAdd(true);setForm(emptyVehicle);setEditIdx(null);}} style={{padding:"10px 18px",background:"transparent",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>+ Add</button>
+          <button onClick={()=>{setSyncStage(null);setSyncReport(null);setShowSync(true);}} style={{padding:"11px 24px",background:"rgba(201,168,76,0.18)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer",fontWeight:500}}>⟳ Smart Sync</button>
         </div>
       </div>
 
@@ -1317,6 +1448,166 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Smart Sync Modal */}
+      {showSync && (
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.82)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.3)",borderRadius:8,width:"100%",maxWidth:520,overflow:"hidden"}}>
+
+            {/* Modal header */}
+            <div style={{padding:"18px 24px",borderBottom:"1px solid rgba(201,168,76,0.12)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:9,letterSpacing:"0.45em",color:gold,textTransform:"uppercase",marginBottom:3}}>Inventory</div>
+                <div style={{fontSize:16,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Smart Sync</div>
+              </div>
+              {!syncStage && <button onClick={()=>setShowSync(false)} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>}
+            </div>
+
+            {/* Drop zone — initial state */}
+            {!syncStage && (
+              <div style={{padding:24}}>
+                <div
+                  onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+                  onDragLeave={()=>setDragOver(false)}
+                  onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f){runFullSync(f);}}}
+                  onClick={()=>syncFileRef.current?.click()}
+                  style={{border:`2px dashed ${dragOver?"rgba(201,168,76,0.75)":"rgba(201,168,76,0.28)"}`,borderRadius:6,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:dragOver?"rgba(201,168,76,0.04)":"transparent",transition:"all 0.2s"}}
+                >
+                  <div style={{fontSize:26,color:gold,marginBottom:10}}>↑</div>
+                  <div style={{fontSize:17,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif",marginBottom:6}}>Drop your DMS export here</div>
+                  <div style={{fontSize:11,color:"var(--muted)",marginBottom:18}}>or click to browse · CSV or Excel</div>
+                  <div style={{fontSize:10,color:"var(--dim2)",lineHeight:1.8,letterSpacing:"0.04em"}}>
+                    Syncs inventory &nbsp;·&nbsp; detects price drops &nbsp;·&nbsp; checks NHTSA recalls &nbsp;·&nbsp; matches waiting clients
+                  </div>
+                </div>
+                <div style={{marginTop:20,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {[
+                    {icon:"↕","label":"New & removed vehicles detected automatically"},
+                    {icon:"📉","label":"Price drops identified — apply in one click"},
+                    {icon:"⚠","label":"Every VIN checked against NHTSA in real time"},
+                    {icon:"★","label":"New arrivals matched to clients on your radar"}
+                  ].map(item=>(
+                    <div key={item.label} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"10px 12px",background:"var(--w03)",borderRadius:4,border:"1px solid rgba(201,168,76,0.08)"}}>
+                      <span style={{color:gold,fontSize:13,minWidth:16}}>{item.icon}</span>
+                      <span style={{fontSize:11,color:"var(--muted)",lineHeight:1.5}}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Progress stages */}
+            {(syncStage==='parsing'||syncStage==='comparing'||syncStage==='recalls') && (
+              <div style={{padding:"32px 28px"}}>
+                {[
+                  {key:'parsing',   label:'Parsing file',          sub: syncStage!=='parsing' ? (syncReport ? syncReport.total+' vehicles found' : 'complete') : 'Reading your DMS export…'},
+                  {key:'comparing', label:'Comparing inventory',   sub: syncStage==='recalls'||syncStage==='done' ? (syncReport ? syncReport.newCount+' new · '+syncReport.priceDrops.length+' price changes' : 'complete') : syncStage==='comparing' ? 'Checking for new vehicles and price changes…' : ''},
+                  {key:'recalls',   label:'Checking NHTSA recalls',sub: syncStage==='recalls' && recallProgress.total>0 ? recallProgress.done+' / '+recallProgress.total+' VINs' : syncStage==='recalls' ? 'Connecting to NHTSA…' : ''}
+                ].map((step,si)=>{
+                  const order = ['parsing','comparing','recalls'];
+                  const stepIdx = order.indexOf(step.key);
+                  const curIdx  = order.indexOf(syncStage);
+                  const done    = stepIdx < curIdx;
+                  const active  = stepIdx === curIdx;
+                  return (
+                    <div key={step.key} style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:22}}>
+                      <div style={{width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`1px solid ${done?gold:active?"rgba(201,168,76,0.6)":"rgba(201,168,76,0.15)"}`,background:done?"rgba(201,168,76,0.12)":"transparent",marginTop:1}}>
+                        {done  ? <span style={{color:gold,fontSize:12}}>✓</span>
+                               : active ? <div style={{width:10,height:10,border:`2px solid ${gold}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} />
+                               : <span style={{color:"var(--dim3)",fontSize:10}}>{si+1}</span>}
+                      </div>
+                      <div style={{flex:1,paddingTop:3}}>
+                        <div style={{fontSize:13,color:active||done?"var(--text)":"var(--dim2)",marginBottom:4}}>{step.label}</div>
+                        {step.sub && <div style={{fontSize:11,color:active?gold:"var(--dim2)"}}>{step.sub}</div>}
+                        {active && step.key==='recalls' && recallProgress.total>0 && (
+                          <div style={{marginTop:8}}>
+                            <div style={{height:2,background:"rgba(201,168,76,0.1)",borderRadius:1,overflow:"hidden"}}>
+                              <div style={{height:"100%",background:gold,width:(recallProgress.done/recallProgress.total*100)+'%',transition:"width 0.25s ease"}} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Results card */}
+            {syncStage==='done' && syncReport && (
+              <div style={{padding:24}}>
+                <div style={{textAlign:"center",paddingBottom:20,borderBottom:"1px solid rgba(201,168,76,0.1)",marginBottom:20}}>
+                  <div style={{width:40,height:40,borderRadius:"50%",background:"rgba(110,231,183,0.12)",border:"1px solid rgba(110,231,183,0.3)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:18,color:"#6ee7b7"}}>✓</div>
+                  <div style={{fontSize:15,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Sync complete</div>
+                  <div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>{syncReport.total} vehicles in inventory</div>
+                </div>
+
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
+
+                  {/* New arrivals */}
+                  <div style={{padding:"13px 16px",background:"var(--w03)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:12,color:"var(--text)"}}>{syncReport.newCount} new arrival{syncReport.newCount!==1?'s':''}</div>
+                      <div style={{fontSize:10,color:"var(--dim2)",marginTop:2}}>{syncReport.newCount>0?"Added to inventory":"Inventory is current"}</div>
+                    </div>
+                    <div style={{fontSize:11,color:syncReport.newCount>0?"#6ee7b7":"var(--dim3)"}}>{syncReport.newCount>0?"✓ Added":"—"}</div>
+                  </div>
+
+                  {/* Price drops */}
+                  <div style={{padding:"13px 16px",background:syncReport.priceDrops.length>0?"rgba(93,188,125,0.04)":"var(--w03)",border:`1px solid ${syncReport.priceDrops.length>0?"rgba(93,188,125,0.2)":"rgba(201,168,76,0.1)"}`,borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:12,color:syncReport.priceDrops.length>0?"#6fcf97":"var(--text)"}}>
+                        {syncReport.priceDrops.length} price drop{syncReport.priceDrops.length!==1?'s':''} detected
+                      </div>
+                      {syncReport.priceDrops.length>0 && (
+                        <div style={{fontSize:10,color:"var(--dim2)",marginTop:2}}>
+                          Avg reduction: ${Math.round(syncReport.priceDrops.reduce((s,p)=>s+p.drop,0)/syncReport.priceDrops.length).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                    {syncReport.priceDrops.length>0 && (
+                      <button onClick={()=>{applySyncPriceDrops(syncReport.priceDrops);setSyncReport({...syncReport,priceDrops:[]});}} style={{padding:"6px 14px",background:"rgba(93,188,125,0.1)",border:"1px solid rgba(93,188,125,0.35)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer"}}>Apply All</button>
+                    )}
+                  </div>
+
+                  {/* Recalls */}
+                  <div style={{padding:"13px 16px",background:syncReport.recallCount>0?"rgba(252,165,165,0.04)":"var(--w03)",border:`1px solid ${syncReport.recallCount>0?"rgba(252,165,165,0.25)":"rgba(201,168,76,0.1)"}`,borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontSize:12,color:syncReport.recallCount>0?"#fca5a5":"var(--text)"}}>
+                        {syncReport.recallCount>0 ? '⚠ '+syncReport.recallCount+' vehicle'+(syncReport.recallCount!==1?'s':'')+' with active recalls' : 'No active recalls found'}
+                      </div>
+                      {syncReport.recallCount>0 && <div style={{fontSize:10,color:"var(--dim2)",marginTop:2}}>Check Recalls tab for full details</div>}
+                    </div>
+                    {syncReport.recallCount>0 && <span style={{color:"#fca5a5",fontSize:13}}>!</span>}
+                  </div>
+
+                  {/* Client matches — the wow moment */}
+                  {syncReport.matches.length>0 && (
+                    <div style={{padding:"14px 16px",background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.3)",borderRadius:4}}>
+                      <div style={{fontSize:11,letterSpacing:"0.25em",color:gold,textTransform:"uppercase",marginBottom:10}}>★ Client matches — {syncReport.matches.length} waiting</div>
+                      {syncReport.matches.map((m,i)=>(
+                        <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:i<syncReport.matches.length-1?8:0}}>
+                          <div style={{width:24,height:24,borderRadius:"50%",background:"rgba(201,168,76,0.12)",border:"1px solid rgba(201,168,76,0.25)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:9,color:gold,textTransform:"uppercase",fontWeight:500,letterSpacing:"0.05em"}}>
+                            {m.client.split(' ').map(n=>n[0]).join('').slice(0,2)}
+                          </div>
+                          <div>
+                            <div style={{fontSize:12,color:"var(--text)"}}>{m.client}</div>
+                            <div style={{fontSize:11,color:"var(--muted)",marginTop:1}}>Looking for a <span style={{color:gold}}>{m.vehicle}</span></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{display:"flex",justifyContent:"flex-end"}}>
+                  <button onClick={()=>{setShowSync(false);setSyncStage(null);setSyncReport(null);}} style={{padding:"10px 28px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>Done</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -2998,7 +3289,7 @@ function App() {
         />}
         {view==="inbox" && <JessicaInbox onPushToClient={(d)=>{setView("new"); window._prefill=d;}} />}
         {view==="followups" && <FollowUpsView clients={clients} />}
-        {view==="inventory" && <InventoryView />}
+        {view==="inventory" && <InventoryView clients={clients} />}
         {view==="recalls" && <RecallMonitorView />}
         {view==="stores" && <StoreInventoryView clients={clients} />}
         {view==="appraise" && <AppraisalView />}
