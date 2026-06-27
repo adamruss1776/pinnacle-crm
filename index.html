@@ -11,7 +11,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if(window['pdfjs-dist/build/pdf'])window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
-*/
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1092,8 +1091,7 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
     reader.readAsArrayBuffer(file); e.target.value = '';
   };
 
-  const doImport = () => {
-     const handlePriceDropFile = (e) => {
+  const handlePriceDropFile = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -1137,7 +1135,6 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
     };
     reader.readAsArrayBuffer(file); e.target.value = '';
   };
- 
   const applyPriceDrop = (item) => {
     const updated = vehicles.map((v, i) => i === item.vehicleIdx
       ? { ...v, oldPrice: String(item.oldPrice), price: String(item.newPrice) }
@@ -1146,7 +1143,6 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
     setPdReport(prev => prev.filter(p => p.vin !== item.vin));
     if (pdReport.length <= 1) setShowPdReport(false);
   };
- 
   const applyAllPriceDrops = () => {
     let updated = [...vehicles];
     pdReport.forEach(item => {
@@ -1157,59 +1153,7 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
     setVehicles(updated); saveToLS(updated);
     setPdReport([]); setShowPdReport(false);
   };
-*/
- 
-// ─────────────────────────────────────────────────────────────
-//  2c) Find the "↑ Import CSV/Excel" button inside InventoryView's return JSX.
-//      Add these lines IMMEDIATELY BEFORE that button:
-// ─────────────────────────────────────────────────────────────
-/*
-          <input ref={priceDropRef} type="file" accept=".csv,.xlsx,.xls" onChange={handlePriceDropFile} style={{display:"none"}} />
-          <button onClick={()=>priceDropRef.current?.click()} style={{padding:"10px 18px",background:"rgba(93,188,125,0.1)",border:"1px solid rgba(93,188,125,0.35)",borderRadius:3,color:"#6fcf97",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>📉 Price Drop Check</button>
-*/
- 
-// ─────────────────────────────────────────────────────────────
-//  2d) Find the closing </div> at the very end of InventoryView's return.
-//      Add this Price Drop Report modal BEFORE that final closing </div>:
-// ─────────────────────────────────────────────────────────────
-/*
-      {showPdReport && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{background:"var(--surface)",borderRadius:6,padding:28,width:"100%",maxWidth:680,maxHeight:"80vh",overflowY:"auto",border:"1px solid rgba(201,168,76,0.2)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
-              <div>
-                <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Inventory Analysis</div>
-                <h2 style={{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:"var(--text)"}}>Price Drop Report</h2>
-                <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{pdReport.length} vehicle{pdReport.length!==1?"s":""} with price reductions found</div>
-              </div>
-              <div style={{display:"flex",gap:8"}}>
-                <button onClick={applyAllPriceDrops} style={{padding:"8px 16px",background:"rgba(110,231,183,0.15)",border:"1px solid rgba(110,231,183,0.4)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Apply All</button>
-                <button onClick={()=>setShowPdReport(false)} style={{padding:"8px 16px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Close</button>
-              </div>
-            </div>
-            {pdReport.length === 0
-              ? <div style={{textAlign:"center",color:"var(--muted)",padding:32}}>No price drops found — all prices are current.</div>
-              : <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {pdReport.map((item,i)=>(
-                    <div key={i} style={{background:"var(--bg)",border:"1px solid rgba(110,231,183,0.15)",borderRadius:4,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:14,color:"var(--text)",marginBottom:4}}>{item.name}</div>
-                        <div style={{fontSize:11,color:"var(--dim2)"}}>VIN: {item.vin}{item.store ? " · " + item.store : ""}</div>
-                      </div>
-                      <div style={{textAlign:"right",flexShrink:0}}>
-                        <div style={{fontSize:13,color:"var(--muted2)",textDecoration:"line-through"}}>${item.oldPrice.toLocaleString()}</div>
-                        <div style={{fontSize:15,color:"#6fcf97",fontWeight:500}}>${item.newPrice.toLocaleString()}</div>
-                        <div style={{fontSize:11,color:"#6fcf97",marginTop:2}}>▼ ${item.drop.toLocaleString()} ({item.pct}%)</div>
-                      </div>
-                      <button onClick={()=>applyPriceDrop(item)} style={{padding:"7px 14px",background:"rgba(110,231,183,0.1)",border:"1px solid rgba(110,231,183,0.3)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer",flexShrink:0}}>Apply</button>
-                    </div>
-                  ))}
-                </div>
-            }
-          </div>
-        </div>
-      )}
-*/
+  const doImport = () => {
     const withStore = importData.map((v, i) => ({...v, store: v.store || importStore || '', id: Date.now() + i}));
     const updated = [...vehicles, ...withStore];
     setVehicles(updated); saveToLS(updated);
@@ -1230,6 +1174,8 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
         </div>
         <div style={{display:"flex",gap:10}}>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileImport} style={{display:"none"}} />
+          <input ref={priceDropRef} type="file" accept=".csv,.xlsx,.xls" onChange={handlePriceDropFile} style={{display:"none"}} />
+          <button onClick={()=>priceDropRef.current?.click()} style={{padding:"10px 18px",background:"rgba(93,188,125,0.1)",border:"1px solid rgba(93,188,125,0.35)",borderRadius:3,color:"#6fcf97",fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>📉 Price Drop Check</button>
           <button onClick={()=>fileInputRef.current?.click()} style={{padding:"10px 18px",background:"var(--w04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>↑ Import CSV/Excel</button>
           <button onClick={()=>{setForm(emptyVehicle);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.15)",border:"1px solid rgba(201,168,76,0.45)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer"}}>+ Add Vehicle</button>
         </div>
@@ -1401,6 +1347,43 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {/* Price Drop Report Modal */}
+      {showPdReport && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"var(--surface)",borderRadius:6,padding:28,width:"100%",maxWidth:680,maxHeight:"80vh",overflowY:"auto",border:"1px solid rgba(201,168,76,0.2)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Inventory Analysis</div>
+                <h2 style={{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:"var(--text)"}}>Price Drop Report</h2>
+                <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{pdReport.length} vehicle{pdReport.length!==1?"s":""} with price reductions found</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={applyAllPriceDrops} style={{padding:"8px 16px",background:"rgba(110,231,183,0.15)",border:"1px solid rgba(110,231,183,0.4)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Apply All</button>
+                <button onClick={()=>setShowPdReport(false)} style={{padding:"8px 16px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>Close</button>
+              </div>
+            </div>
+            {pdReport.length === 0
+              ? <div style={{textAlign:"center",color:"var(--muted)",padding:32}}>No price drops found — all prices are current.</div>
+              : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {pdReport.map((item,i)=>(
+                    <div key={i} style={{background:"var(--bg)",border:"1px solid rgba(110,231,183,0.15)",borderRadius:4,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:14,color:"var(--text)",marginBottom:4}}>{item.name}</div>
+                        <div style={{fontSize:11,color:"var(--dim2)"}}>VIN: {item.vin}{item.store ? " · " + item.store : ""}</div>
+                      </div>
+                      <div style={{textAlign:"right",flexShrink:0}}>
+                        <div style={{fontSize:13,color:"var(--muted2)",textDecoration:"line-through"}}>${item.oldPrice.toLocaleString()}</div>
+                        <div style={{fontSize:15,color:"#6fcf97",fontWeight:500}}>${item.newPrice.toLocaleString()}</div>
+                        <div style={{fontSize:11,color:"#6fcf97",marginTop:2}}>▼ ${item.drop.toLocaleString()} ({item.pct}%)</div>
+                      </div>
+                      <button onClick={()=>applyPriceDrop(item)} style={{padding:"7px 14px",background:"rgba(110,231,183,0.1)",border:"1px solid rgba(110,231,183,0.3)",borderRadius:3,color:"#6fcf97",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",cursor:"pointer",flexShrink:0}}>Apply</button>
+                    </div>
+                  ))}
+                </div>
+            }
           </div>
         </div>
       )}
@@ -2531,6 +2514,8 @@ function App() {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("All");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('pinnacle_dark') === '1');
+  const [clientPrefill, setClientPrefill] = useState(null);
+  const [prefillKey, setPrefillKey] = useState(0);
   const isSetup = SUPABASE_URL === "YOUR_SUPABASE_URL";
 
   useEffect(() => {
@@ -2657,11 +2642,14 @@ function App() {
         </>}
 
         {view==="new" && <>
-          <div style={{marginBottom:32}}>
-            <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>New Lead</div>
-            <h1 style={{fontSize:30,color:"var(--text)"}}>Add Client</h1>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:32}}>
+            <div>
+              <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>New Lead</div>
+              <h1 style={{fontSize:30,color:"var(--text)"}}>Add Client</h1>
+            </div>
+            <ClientPDFImport onImport={(data)=>{setClientPrefill(data);setPrefillKey(k=>k+1);}} />
           </div>
-          <ClientForm onSave={handleSave} onCancel={()=>nav("list")} saving={saving} />
+          <ClientForm key={"new-"+prefillKey} initial={clientPrefill} onSave={handleSave} onCancel={()=>{nav("list");setClientPrefill(null);}} saving={saving} />
         </>}
 
         {view==="agent" && <AgentView />}
@@ -2676,7 +2664,7 @@ function App() {
         {view==="recalls" && <RecallMonitorView />}
         {view==="stores" && <StoreInventoryView clients={clients} />}
         {view==="appraise" && <AppraisalView />}
-        {view==="sales" && <MyNumbersView />}
+        {view==="sales" && <SalesView />}
         {view==="detail" && selected && <Detail client={selected} onBack={()=>nav("list")} onEdit={()=>setView("edit")} onDelete={handleDelete} />}
 
         {view==="edit" && selected && <>
