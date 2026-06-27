@@ -11,6 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if(window['pdfjs-dist/build/pdf'])window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2010,6 +2011,58 @@ function SalesView() {
   const [form, setForm] = React.useState(emptyDeal);
   const [goalForm, setGoalForm] = React.useState({...goals});
 
+  const extractDealFields = (fullText) => {
+    const get = (regex) => { const m = fullText.match(regex); return m ? m[1].trim() : ''; };
+    // Date — Elead: "Date Sold: 6/26/2026"
+    const rawDate = get(/Date\s*Sold[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)
+                 || get(/(?:Sale|Contract|Deal)\s*Date[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)
+                 || get(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/);
+    let dealDate = new Date().toISOString().split('T')[0];
+    if (rawDate) { const d = new Date(rawDate); if (!isNaN(d)) dealDate = d.toISOString().split('T')[0]; }
+    // Vehicle — grab year + words until bodytype digits or newline (works across all formats)
+    const vehicle = get(/(\d{4}\s+[A-Za-z][A-Za-z\s]{4,40}?)(?:\s*\d+\s*dr|\s*4WD|\s*AWD|\n|VIN|Stock|Mileage)/i)
+                 || get(/(\d{4}\s+[A-Za-z][A-Za-z\s]{4,40}?)(?:\s{2,})/i);
+    // Stock number
+    const stockNum = get(/Stock\s*(?:Number|#|No\.?)[:\s]+([A-Z0-9\-]{4,14})/i)
+                  || get(/Stock[:\s]+([A-Z0-9\-]{4,14})/i);
+    // New vs Used — Elead: "New/Used: Used"
+    const typeRaw = get(/New\s*[\/|]\s*Used[:\s]+(New|Used)/i) || '';
+    const type = (typeRaw || fullText).toLowerCase().includes('used') ? 'used' : 'new';
+    // Front gross — Elead: "Front Gross: $10,799.06"
+    const frontMatch = fullText.match(/Front\s*(?:End\s*)?(?:Gross|Profit)[:\s]+\$?([\d,]+\.?\d*)/i)
+                    || fullText.match(/Front[:\s]+\$?([\d,]+\.?\d*)/i);
+    const front = frontMatch ? frontMatch[1].replace(/,/g,'') : '';
+    // Back gross — Elead: label "Back Gross:" then value appears lines later after "CASH"
+    // Strategy: find index of "Back Gross:", then grab first $X,XXX.XX after it
+    const backIdx = fullText.toLowerCase().indexOf('back gross:');
+    let back = '';
+    if (backIdx >= 0) {
+      const afterBack = fullText.slice(backIdx + 11);
+      const bm = afterBack.match(/\$?([\d,]+\.\d{2})/);
+      if (bm) back = bm[1].replace(/,/g,'');
+    }
+    if (!back) {
+      // Fallback: Reynolds/CDK style inline
+      const bm2 = fullText.match(/Back\s*(?:End\s*)?(?:Gross|Profit)[:\s]+\$?([\d,]+\.?\d*)/i)
+               || fullText.match(/F&?\s*I\s*(?:Gross|Income|Total)[:\s]+\$?([\d,]+\.?\d*)/i)
+               || fullText.match(/Reserve[:\s]+\$?([\d,]+\.?\d*)/i);
+      if (bm2) back = bm2[1].replace(/,/g,'');
+    }
+    // DMS / Deal number
+    const dealNum = get(/DMS\s*ID[:\s]+(\d{4,10})/i)
+                 || get(/Deal\s*(?:#|No\.?|Number)[:\s]+([A-Z0-9\-]{3,12})/i);
+    // Salesperson
+    const salesperson = get(/Salesperson[:\s]+([A-Za-z][A-Za-z\s]{2,28}?)(?:\n|Date Sold|$)/i)
+                      || get(/Sold\s*By[:\s]+([A-Za-z][A-Za-z\s]{2,28}?)(?:\n|$)/i);
+    // Customer name — Elead: "INNA TANCHUK - Purchase Information"
+    const customerName = get(/([A-Z][A-Z ]{3,30})\s*-\s*Purchase Information/);
+    const notes = [
+      customerName ? 'Customer: ' + customerName.trim() : '',
+      dealNum ? 'DMS #' + dealNum : '',
+      salesperson ? 'Sold by: ' + salesperson.trim() : ''
+    ].filter(Boolean).join(' · ');
+    return { date: dealDate, vehicle: (vehicle || '').replace(/\s+/g,' ').trim(), stockNum: stockNum || '', type, front, back, notes };
+  };
   const parseDealSheetPDF = async (file) => {
     setPdfParsing(true); setPdfError(null); setPdfPreview(null);
     try {
@@ -2017,41 +2070,28 @@ function SalesView() {
       if (!pdfjsLib) throw new Error('PDF.js not loaded');
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      // Try text extraction first
       let fullText = '';
-      for (let p = 1; p <= Math.min(pdf.numPages, 8); p++) {
+      for (let p = 1; p <= Math.min(pdf.numPages, 6); p++) {
         const page = await pdf.getPage(p);
         const tc = await page.getTextContent();
         fullText += tc.items.map(i => i.str).join(' ') + '\n';
       }
-      const get = (regex) => { const m = fullText.match(regex); return m ? m[1].trim() : ''; };
-      // Date
-      const rawDate = get(/(?:Date|Sale\s*Date|Contract\s*Date)[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i)
-                   || get(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
-      let dealDate = new Date().toISOString().split('T')[0];
-      if (rawDate) {
-        const d = new Date(rawDate); if (!isNaN(d)) dealDate = d.toISOString().split('T')[0];
+      // If text is too sparse, fall back to OCR (image-based PDFs like Elead screenshots)
+      if (fullText.replace(/\s/g,'').length < 80) {
+        if (!window.Tesseract) throw new Error('This PDF is image-based. OCR library not loaded — try refreshing the page.');
+        // Render first page to canvas and OCR it
+        const page = await pdf.getPage(1);
+        const scale = 2.5;
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const dataUrl = canvas.toDataURL('image/png');
+        const result = await window.Tesseract.recognize(dataUrl, 'eng', { logger: ()=>{} });
+        fullText = result.data.text;
       }
-      // Vehicle
-      const vehicle = get(/(?:Vehicle|Unit|Car)[:\s]+(\d{4}\s+[A-Za-z][A-Za-z\s]{2,30}?)(?:\s{2,}|\n|VIN|Stock)/i)
-                   || get(/(\d{4}\s+(?:Lamborghini|Bentley|Rolls[\-\s]Royce|Ferrari|Porsche|Aston|McLaren|Bugatti|Mercedes|BMW|Audi)[A-Za-z\s]{0,25})/i);
-      // Stock number
-      const stockNum = get(/(?:Stock\s*(?:#|No\.?|Number)[:\s]*)([A-Z0-9\-]{4,12})/i);
-      // New vs Used
-      const typeRaw = get(/(?:New|Used|Pre[\-\s]Owned|CPO|Certified)/i).toLowerCase();
-      const type = typeRaw.includes('used') || typeRaw.includes('pre') || typeRaw.includes('cert') ? 'used' : 'new';
-      // Front-end gross — look for common deal sheet labels
-      const frontRaw = get(/(?:Front[\s\-]?(?:End\s*)?Gross|Front\s*Profit|Total\s*Front)[:\s]*\$?([\d,]+)/i)
-                    || get(/(?:Selling\s*Price\s*(?:Profit|Gross)|Sales\s*Gross)[:\s]*\$?([\d,]+)/i);
-      const front = frontRaw ? frontRaw.replace(/,/g,'') : '';
-      // Back-end gross
-      const backRaw = get(/(?:Back[\s\-]?(?:End\s*)?Gross|Back\s*Profit|Finance?\s*Gross|F&?\s*I\s*(?:Gross|Profit|Income))[:\s]*\$?([\d,]+)/i)
-                   || get(/(?:Reserve|Product\s*Profit|F&I\s*Total)[:\s]*\$?([\d,]+)/i);
-      const back = backRaw ? backRaw.replace(/,/g,'') : '';
-      // Notes — salesperson or deal number for reference
-      const dealNum = get(/(?:Deal\s*(?:#|No\.?|Number))[:\s]*([A-Z0-9\-]{3,12})/i);
-      const salesperson = get(/(?:Salesperson|Sales\s*Person|Sold\s*By)[:\s]+([A-Za-z\s]{3,30}?)(?:\s{2,}|\n)/i);
-      const notes = [dealNum ? 'Deal #' + dealNum : '', salesperson ? 'Sold by: ' + salesperson.trim() : ''].filter(Boolean).join(' · ');
-      setPdfPreview({ date: dealDate, vehicle: vehicle || '', stockNum: stockNum || '', type, front: front || '', back: back || '', notes });
+      setPdfPreview(extractDealFields(fullText));
     } catch(e) { setPdfError('Could not parse PDF: ' + e.message); }
     setPdfParsing(false);
   };
