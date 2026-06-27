@@ -1045,6 +1045,31 @@ const priceDropRef = React.useRef(null);
     return Math.floor(hrs/24) + 'd ago';
   };
 
+  const decodeVinsBatch = async (vins) => {
+    const results = {};
+    const unique = [...new Set(vins.filter(v => v && v.length >= 11))];
+    for (let i = 0; i < unique.length; i += 50) {
+      const batch = unique.slice(i, i+50);
+      try {
+        const res = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVINValuesBatch/', {
+          method: 'POST',
+          headers: {'Content-Type':'application/x-www-form-urlencoded'},
+          body: 'DATA=' + encodeURIComponent(batch.join(';')) + '&format=json'
+        });
+        const data = await res.json();
+        (data.Results || []).forEach(r => {
+          if (r.VIN) results[r.VIN.trim().toUpperCase()] = {
+            year:  r.ModelYear || '',
+            make:  (r.Make || '').charAt(0).toUpperCase() + (r.Make||'').slice(1).toLowerCase(),
+            model: r.Model  || '',
+            trim:  r.Trim   || r.Series || ''
+          };
+        });
+      } catch {}
+    }
+    return results;
+  };
+
   const applySyncPriceDrops = (drops) => {
     let updated = [...vehicles];
     drops.forEach(item => {
@@ -1098,9 +1123,26 @@ const priceDropRef = React.useRef(null);
           });
         });
 
-        // Add new vehicles to inventory
+        // Build merged inventory (don't save yet — decode VINs first)
         const addedVehicles = newVehicles.map((v,i) => ({...v, id: Date.now()+i}));
-        const mergedInventory = [...vehicles, ...addedVehicles];
+        let mergedInventory = [...vehicles, ...addedVehicles];
+
+        // VIN decode step — fill in Year/Make/Model for any vehicles missing those fields
+        setSyncStage('decoding');
+        const vinsToDecode = mergedInventory.filter(v => v.vin && v.vin.trim().length >= 11 && (!v.year || !v.make || !v.model));
+        let decodedCount = 0;
+        if (vinsToDecode.length > 0) {
+          const decoded = await decodeVinsBatch(vinsToDecode.map(v => v.vin.trim()));
+          mergedInventory = mergedInventory.map(v => {
+            if (!v.vin) return v;
+            const d = decoded[v.vin.trim().toUpperCase()];
+            if (!d) return v;
+            const hadMissing = !v.year || !v.make || !v.model;
+            if (!hadMissing) return v;
+            decodedCount++;
+            return {...v, year: v.year||d.year, make: v.make||d.make, model: v.model||d.model, trim: v.trim||d.trim};
+          });
+        }
         setVehicles(mergedInventory);
         saveToLS(mergedInventory);
 
@@ -1140,7 +1182,7 @@ const priceDropRef = React.useRef(null);
         localStorage.setItem('pinnacle_recall_results', JSON.stringify({results: recallResults, checkedAt}));
         setLastSyncTime(checkedAt);
 
-        setSyncReport({total: mergedInventory.length, newCount: addedVehicles.length, priceDrops, recallCount, recallResults, matches});
+        setSyncReport({total: mergedInventory.length, newCount: addedVehicles.length, priceDrops, recallCount, recallResults, matches, decodedCount});
         setSyncStage('done');
 
       } catch(err) { setSyncStage(null); alert('Sync failed: ' + err.message); }
@@ -1499,27 +1541,32 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
             )}
 
             {/* Progress stages */}
-            {(syncStage==='parsing'||syncStage==='comparing'||syncStage==='recalls') && (
-              <div style={{padding:"32px 28px"}}>
+            {(syncStage==='parsing'||syncStage==='comparing'||syncStage==='decoding'||syncStage==='recalls') && (
+              <div style={{padding:"28px 28px"}}>
                 {[
-                  {key:'parsing',   label:'Parsing file',          sub: syncStage!=='parsing' ? (syncReport ? syncReport.total+' vehicles found' : 'complete') : 'Reading your DMS export…'},
-                  {key:'comparing', label:'Comparing inventory',   sub: syncStage==='recalls'||syncStage==='done' ? (syncReport ? syncReport.newCount+' new · '+syncReport.priceDrops.length+' price changes' : 'complete') : syncStage==='comparing' ? 'Checking for new vehicles and price changes…' : ''},
-                  {key:'recalls',   label:'Checking NHTSA recalls',sub: syncStage==='recalls' && recallProgress.total>0 ? recallProgress.done+' / '+recallProgress.total+' VINs' : syncStage==='recalls' ? 'Connecting to NHTSA…' : ''}
+                  {key:'parsing',   label:'Parsing file',
+                   sub: syncStage!=='parsing'  ? 'Complete' : 'Reading your DMS export…'},
+                  {key:'comparing', label:'Comparing inventory',
+                   sub: ['decoding','recalls','done'].includes(syncStage) ? 'Complete' : syncStage==='comparing' ? 'Checking for new vehicles and price changes…' : ''},
+                  {key:'decoding',  label:'Filling in vehicle details',
+                   sub: syncStage==='recalls'||syncStage==='done' ? 'Complete' : syncStage==='decoding' ? 'Decoding VINs via NHTSA…' : ''},
+                  {key:'recalls',   label:'Checking NHTSA recalls',
+                   sub: syncStage==='recalls' && recallProgress.total>0 ? recallProgress.done+' / '+recallProgress.total+' VINs' : syncStage==='recalls' ? 'Connecting to NHTSA…' : ''}
                 ].map((step,si)=>{
-                  const order = ['parsing','comparing','recalls'];
+                  const order = ['parsing','comparing','decoding','recalls'];
                   const stepIdx = order.indexOf(step.key);
                   const curIdx  = order.indexOf(syncStage);
                   const done    = stepIdx < curIdx;
                   const active  = stepIdx === curIdx;
                   return (
-                    <div key={step.key} style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:22}}>
-                      <div style={{width:26,height:26,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`1px solid ${done?gold:active?"rgba(201,168,76,0.6)":"rgba(201,168,76,0.15)"}`,background:done?"rgba(201,168,76,0.12)":"transparent",marginTop:1}}>
-                        {done  ? <span style={{color:gold,fontSize:12}}>✓</span>
+                    <div key={step.key} style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:18}}>
+                      <div style={{width:24,height:24,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`1px solid ${done?gold:active?"rgba(201,168,76,0.6)":"rgba(201,168,76,0.15)"}`,background:done?"rgba(201,168,76,0.12)":"transparent",marginTop:1}}>
+                        {done  ? <span style={{color:gold,fontSize:11}}>✓</span>
                                : active ? <div style={{width:10,height:10,border:`2px solid ${gold}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} />
                                : <span style={{color:"var(--dim3)",fontSize:10}}>{si+1}</span>}
                       </div>
-                      <div style={{flex:1,paddingTop:3}}>
-                        <div style={{fontSize:13,color:active||done?"var(--text)":"var(--dim2)",marginBottom:4}}>{step.label}</div>
+                      <div style={{flex:1,paddingTop:2}}>
+                        <div style={{fontSize:13,color:active||done?"var(--text)":"var(--dim2)",marginBottom:3}}>{step.label}</div>
                         {step.sub && <div style={{fontSize:11,color:active?gold:"var(--dim2)"}}>{step.sub}</div>}
                         {active && step.key==='recalls' && recallProgress.total>0 && (
                           <div style={{marginTop:8}}>
@@ -1546,13 +1593,18 @@ Sign off as Adam Russell, Luxury Sales Advisor, Pinnacle CRM, adam@pinnaclecrm.a
 
                 <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
 
-                  {/* New arrivals */}
+                  {/* New arrivals + VIN decode */}
                   <div style={{padding:"13px 16px",background:"var(--w03)",border:"1px solid rgba(201,168,76,0.1)",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div>
                       <div style={{fontSize:12,color:"var(--text)"}}>{syncReport.newCount} new arrival{syncReport.newCount!==1?'s':''}</div>
-                      <div style={{fontSize:10,color:"var(--dim2)",marginTop:2}}>{syncReport.newCount>0?"Added to inventory":"Inventory is current"}</div>
+                      <div style={{fontSize:10,color:"var(--dim2)",marginTop:2}}>
+                        {syncReport.newCount>0 ? "Added to inventory" : "Inventory is current"}
+                        {syncReport.decodedCount>0 && <span style={{color:gold}}> · {syncReport.decodedCount} VIN{syncReport.decodedCount!==1?'s':''} auto-decoded</span>}
+                      </div>
                     </div>
-                    <div style={{fontSize:11,color:syncReport.newCount>0?"#6ee7b7":"var(--dim3)"}}>{syncReport.newCount>0?"✓ Added":"—"}</div>
+                    <div style={{fontSize:11,color:syncReport.newCount>0||syncReport.decodedCount>0?"#6ee7b7":"var(--dim3)"}}>
+                      {syncReport.newCount>0||syncReport.decodedCount>0?"✓ Done":"—"}
+                    </div>
                   </div>
 
                   {/* Price drops */}
