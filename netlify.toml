@@ -1,0 +1,9 @@
+[build]
+functions = "netlify/functions"
+publish = "."
+
+[functions]
+node_bundler = "esbuild"
+
+[functions."store-scan-daily"]
+schedule = "0 12 * * *"
