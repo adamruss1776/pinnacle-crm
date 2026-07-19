@@ -96,21 +96,32 @@ exports.handler = async () => {
   all = all.filter(v => { if (seenVins.has(v.vin)) return false; seenVins.add(v.vin); return true; });
 
   // Existing rows → detect new arrivals and price drops
-  const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/store_inventory?select=vin,price`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  const existingRes = await fetch(SUPABASE_URL + "/rest/v1/store_inventory?select=vin,price,prev_price,price_dropped_at,first_seen", {
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY },
   });
   const existing = existingRes.ok ? await existingRes.json() : [];
-  const priceByVin = Object.fromEntries(existing.map(r => [r.vin, r.price]));
+  const priorByVin = Object.fromEntries(existing.map(r => [r.vin, r]));
 
   const newArrivals = [];
   const priceDrops = [];
+  // Every row must carry an identical set of keys. PostgREST rejects a bulk
+  // insert where objects differ (PGRST102: "All object keys must match"),
+  // which previously caused the whole scan to save nothing.
   const rows = all.map(v => {
-    const row = { ...v, last_seen: now };
-    if (!(v.vin in priceByVin)) {
-      row.first_seen = now;
+    const prior = priorByVin[v.vin];
+    const row = {
+      vin: v.vin, store: v.store, year: v.year, make: v.make, model: v.model,
+      trim: v.trim, price: v.price, mileage: v.mileage, condition: v.condition,
+      stock_number: v.stock_number,
+      prev_price: prior ? (prior.prev_price ?? null) : null,
+      price_dropped_at: prior ? (prior.price_dropped_at ?? null) : null,
+      first_seen: prior ? (prior.first_seen ?? now) : now,
+      last_seen: now,
+    };
+    if (!prior) {
       newArrivals.push(v);
     } else {
-      const oldP = Number(priceByVin[v.vin]);
+      const oldP = Number(prior.price);
       if (oldP && v.price && v.price < oldP) {
         row.prev_price = oldP;
         row.price_dropped_at = now;
