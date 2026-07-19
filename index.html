@@ -4084,6 +4084,16 @@ function SalesView() {
   );
 }
 // ── DEAL DESK (quotes + payment calculator) ─────────────────────────
+// ── Deal desk shared bits (module scope so inputs keep focus while typing) ──
+const inp = {width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:13,textAlign:"right"};
+  const VLine = ({label, children, hint}) => (
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+      <span style={{fontSize:11,color:"var(--muted2)",letterSpacing:"0.12em",textTransform:"uppercase",flex:1}}>{label}{hint && <span style={{fontSize:9,color:"var(--dim2)",display:"block",letterSpacing:"0.05em",textTransform:"none"}}>{hint}</span>}</span>
+      <div style={{width:130}}>{children}</div>
+    </div>
+  );
+  const RO = ({v, color}) => <div style={{...inp, background:"transparent", border:"1px solid var(--w04)", color: color||"var(--text)"}}>{money(v)}</div>;
+
 function DealDesk({client, initial, onClose, onSaved}) {
   const [settings] = useSettings();
   const inventory = React.useMemo(() => {
@@ -4123,14 +4133,7 @@ function DealDesk({client, initial, onClose, onSaved}) {
     onSaved && onSaved();
   };
 
-  const inp = {width:"100%",padding:"9px 11px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,color:"var(--text)",fontSize:13,textAlign:"right"};
-  const VLine = ({label, children, hint}) => (
-    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-      <span style={{fontSize:11,color:"var(--muted2)",letterSpacing:"0.12em",textTransform:"uppercase",flex:1}}>{label}{hint && <span style={{fontSize:9,color:"var(--dim2)",display:"block",letterSpacing:"0.05em",textTransform:"none"}}>{hint}</span>}</span>
-      <div style={{width:130}}>{children}</div>
-    </div>
-  );
-  const RO = ({v, color}) => <div style={{...inp, background:"transparent", border:"1px solid var(--w04)", color: color||"var(--text)"}}>{money(v)}</div>;
+  
 
   const body = (
     <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-start"}}>
