@@ -3580,7 +3580,7 @@ function SalesView() {
           const merged = data.map(d => ({
             id: d.local_id || d.id, date: d.date, vehicle: d.vehicle,
             stockNum: d.stock_num, type: d.type,
-            front: Number(d.front) || 0, back: Number(d.back) || 0, notes: d.notes || ''
+            front: Number(d.front) || 0, back: Number(d.back) || 0, notes: d.notes || '', client: d.client || ''
           }));
           setDeals(merged);
           localStorage.setItem('pinnacle_sales_deals', JSON.stringify(merged));
@@ -3597,7 +3597,7 @@ function SalesView() {
       const rows = updated.map(d => ({
         local_id: typeof d.id === 'number' ? d.id : null,
         date: d.date, vehicle: d.vehicle || '', stock_num: d.stockNum || '',
-        type: d.type || 'new', front: Number(d.front) || 0, back: Number(d.back) || 0,
+        type: d.type || 'new', front: Number(d.front) || 0, back: Number(d.back) || 0, client: d.client || '',
         notes: d.notes || ''
       }));
       const { error } = await sb.from('deals').upsert(rows, { onConflict: 'local_id', ignoreDuplicates: false });
@@ -3614,7 +3614,7 @@ function SalesView() {
   const [pdfParsing, setPdfParsing] = React.useState(false);
   const [pdfPreview, setPdfPreview] = React.useState(null);
   const [pdfError, setPdfError] = React.useState(null);
-  const emptyDeal = {date:new Date().toISOString().split('T')[0],vehicle:'',stockNum:'',type:'new',front:'',back:'',notes:'',split_with:'',split_pct:100};
+  const emptyDeal = {date:new Date().toISOString().split('T')[0],vehicle:'',stockNum:'',client:'',type:'new',front:'',back:'',notes:'',split_with:'',split_pct:100};
   const [form, setForm] = React.useState(emptyDeal);
   const [goalForm, setGoalForm] = React.useState({...goals});
   // Spiffs
@@ -4020,6 +4020,7 @@ function SalesView() {
                     {d.split_pct<100&&d.split_with&&<span style={{fontSize:8,letterSpacing:"0.15em",textTransform:"uppercase",padding:"2px 6px",borderRadius:2,background:"rgba(252,211,77,0.1)",color:"#fcd34d",flexShrink:0}}>Split {d.split_pct}% w/ {d.split_with}</span>}
                     {isCapped(d)&&<span style={{fontSize:8,letterSpacing:"0.12em",textTransform:"uppercase",padding:"2px 6px",borderRadius:2,background:"rgba(252,211,77,0.08)",color:"#fcd34d",flexShrink:0}}>⚡ Capped</span>}
                   </div>
+                  {d.client&&<div style={{fontSize:11,color:"var(--muted)",fontFamily:"'Cormorant Garamond',serif"}}>{d.client}</div>}
                   {d.stockNum&&<div style={{fontSize:10,color:"var(--dim2)"}}>Stock #{d.stockNum}</div>}
                 </div>
                 <div style={{display:"flex",gap:18,alignItems:"center",flexShrink:0}}>
@@ -4075,6 +4076,7 @@ function SalesView() {
                 </div>
               </div>
               <div style={{marginBottom:12}}><div style={lbl9}>Vehicle Sold</div><input value={form.vehicle} onChange={e=>setForm(f=>({...f,vehicle:e.target.value}))} placeholder="e.g. 2025 Rolls-Royce Cullinan" style={fieldStyle} /></div>
+              <div style={{marginBottom:12}}><div style={lbl9}>Client</div><input value={form.client||''} onChange={e=>setForm(f=>({...f,client:e.target.value}))} placeholder="Buyer name" style={fieldStyle} /></div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
                 <div><div style={lbl9}>Front End Gross ($)</div><input type="number" value={form.front} onChange={e=>setForm(f=>({...f,front:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
                 <div><div style={lbl9}>Back End Gross ($)</div><input type="number" value={form.back} onChange={e=>setForm(f=>({...f,back:e.target.value}))} placeholder="0" style={fieldStyle} /></div>
