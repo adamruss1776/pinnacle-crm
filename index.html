@@ -2993,6 +2993,202 @@ ${results[v.vin].map(r=>`<div style="margin-top:8px;padding:8px;background:#fff;
 }
  
 // ── STORE INVENTORY MONITOR ─────────────────────────────────────────
+// ── MARKET INTEL ─────────────────────────────────────────────────────
+// What the competition is doing with price, right now. Built off the daily
+// store scan. Nothing here is estimated — every figure is an observed change.
+function MarketView() {
+  const [rows, setRows]   = React.useState(null);
+  const [tab, setTab]     = React.useState('drops');
+  const [store, setStore] = React.useState('All');
+
+  React.useEffect(()=>{ (async()=>{
+    const { data } = await sb.from('store_inventory').select('*');
+    setRows(data || []);
+  })(); }, []);
+
+  const money = n => n==null ? '—' : '$'+Math.round(Number(n)).toLocaleString();
+  const dayCount = iso => iso ? Math.max(0, Math.floor((Date.now()-Date.parse(iso))/86400000)) : null;
+
+  const scoped = React.useMemo(()=>
+    (rows||[]).filter(v => store==='All' || v.store===store), [rows, store]);
+
+  const drops = React.useMemo(()=>
+    scoped
+      .filter(v => v.price_dropped_at && v.prev_price && Number(v.prev_price) > Number(v.price))
+      .map(v => ({...v, cut: Number(v.prev_price)-Number(v.price),
+                  pct: (Number(v.prev_price)-Number(v.price))/Number(v.prev_price)*100}))
+      .sort((a,b)=> Date.parse(b.price_dropped_at) - Date.parse(a.price_dropped_at)),
+    [scoped]);
+
+  const aging = React.useMemo(()=>
+    [...scoped].sort((a,b)=> Date.parse(a.first_seen||0) - Date.parse(b.first_seen||0)).slice(0,40),
+    [scoped]);
+
+  const byModel = React.useMemo(()=>{
+    const m = {};
+    scoped.forEach(v=>{
+      const k = `${v.make} ${v.model}`.trim();
+      if (!k || !v.price) return;
+      (m[k] = m[k] || {n:0, prices:[], drops:0}).n++;
+      m[k].prices.push(Number(v.price));
+      if (v.price_dropped_at) m[k].drops++;
+    });
+    return Object.entries(m).map(([k,v])=>{
+      const s = v.prices.slice().sort((a,b)=>a-b);
+      return { model:k, n:v.n, drops:v.drops,
+               low:s[0], high:s[s.length-1],
+               mid:s[Math.floor(s.length/2)] };
+    }).filter(x=>x.n>1).sort((a,b)=>b.n-a.n);
+  }, [scoped]);
+
+  const storeList = React.useMemo(()=>
+    ['All', ...Array.from(new Set((rows||[]).map(v=>v.store).filter(Boolean))).sort()], [rows]);
+
+  if (!rows) return <div style={{textAlign:"center",padding:"60px 0",color:"var(--dim3)"}}>Loading market data…</div>;
+
+  const th = {textAlign:"left",padding:"10px 12px",fontSize:9.5,color:gold,letterSpacing:"0.16em",
+              textTransform:"uppercase",fontWeight:500,whiteSpace:"nowrap"};
+  const td = {padding:"11px 12px",fontSize:13,color:"var(--text)",fontWeight:300,
+              borderTop:"1px solid rgba(201,168,76,0.12)",whiteSpace:"nowrap"};
+
+  const pill = (active) => ({
+    padding:"9px 14px", background: active?gold:"transparent",
+    border:`1px solid ${active?goldBright:"var(--nav-text)"}`, borderRadius:3,
+    color: active?goldInk:"var(--nav-text)", fontSize:11, fontWeight:active?500:400,
+    letterSpacing:"0.1em", textTransform:"uppercase", cursor:"pointer",
+    transition:"all 0.2s", whiteSpace:"nowrap"
+  });
+
+  const totalCut = drops.reduce((s,d)=>s+d.cut,0);
+
+  return (
+    <>
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Market Intel</div>
+        <h1 style={{fontSize:30,color:"var(--text)"}}>What the competition is doing</h1>
+        <p style={{fontSize:13,color:"var(--muted)",marginTop:8,fontWeight:300,lineHeight:1.7}}>
+          {rows.length} vehicles tracked across {storeList.length-1} stores. Every price change below was
+          observed on a scan — none of it is estimated.
+        </p>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:24}}>
+        {[
+          ['Vehicles tracked', scoped.length],
+          ['Price drops', drops.length],
+          ['Total cut', money(totalCut)],
+          ['Biggest single cut', drops.length?money(Math.max(...drops.map(d=>d.cut))):'—'],
+        ].map(([lbl,val])=>(
+          <div key={lbl} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,padding:"16px 18px"}}>
+            <div style={{fontSize:9,letterSpacing:"0.18em",color:"var(--muted)",textTransform:"uppercase",marginBottom:8}}>{lbl}</div>
+            <div style={{fontSize:22,color:"var(--text)",fontWeight:300}}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        {[['drops','Price Drops'],['aging','Longest Listed'],['model','By Model']].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={pill(tab===k)}>{l}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+        {storeList.map(s=>(
+          <button key={s} onClick={()=>setStore(s)} style={{...pill(store===s),fontSize:10,padding:"7px 11px"}}>
+            {s==='All'?'All stores':s}
+          </button>
+        ))}
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,overflow:"hidden"}}>
+        <div style={{overflowX:"auto"}}>
+          {tab==='drops' && (
+            drops.length===0
+              ? <div style={{padding:"50px 20px",textAlign:"center",color:"var(--muted)",fontSize:13}}>No price drops recorded{store!=='All'?' at this store':''} yet.</div>
+              : <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
+                  <thead><tr>
+                    <th style={th}>Dropped</th><th style={th}>Vehicle</th><th style={th}>Store</th>
+                    <th style={{...th,textAlign:"right"}}>Was</th>
+                    <th style={{...th,textAlign:"right"}}>Now</th>
+                    <th style={{...th,textAlign:"right"}}>Cut</th>
+                  </tr></thead>
+                  <tbody>
+                    {drops.map((v,i)=>(
+                      <tr key={v.vin||i}>
+                        <td style={{...td,color:"var(--muted)",fontSize:12}}>
+                          {new Date(v.price_dropped_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                        </td>
+                        <td style={td}>{v.year} {v.make} {v.model} {v.trim||''}</td>
+                        <td style={{...td,color:"var(--muted)",fontSize:12}}>{v.store}</td>
+                        <td style={{...td,textAlign:"right",color:"var(--muted)",textDecoration:"line-through"}}>{money(v.prev_price)}</td>
+                        <td style={{...td,textAlign:"right"}}>{money(v.price)}</td>
+                        <td style={{...td,textAlign:"right",color:"#e0574f",fontWeight:400}}>
+                          −{money(v.cut)} <span style={{color:"var(--muted)",fontSize:11}}>({v.pct.toFixed(1)}%)</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+          )}
+
+          {tab==='aging' && (
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+              <thead><tr>
+                <th style={th}>Vehicle</th><th style={th}>Store</th>
+                <th style={{...th,textAlign:"right"}}>Price</th>
+                <th style={{...th,textAlign:"right"}}>Miles</th>
+                <th style={{...th,textAlign:"right"}}>Days tracked</th>
+              </tr></thead>
+              <tbody>
+                {aging.map((v,i)=>(
+                  <tr key={v.vin||i}>
+                    <td style={td}>{v.year} {v.make} {v.model} {v.trim||''}</td>
+                    <td style={{...td,color:"var(--muted)",fontSize:12}}>{v.store}</td>
+                    <td style={{...td,textAlign:"right"}}>{money(v.price)}</td>
+                    <td style={{...td,textAlign:"right",color:"var(--muted)"}}>{v.mileage?Number(v.mileage).toLocaleString():'—'}</td>
+                    <td style={{...td,textAlign:"right"}}>{dayCount(v.first_seen) ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {tab==='model' && (
+            byModel.length===0
+              ? <div style={{padding:"50px 20px",textAlign:"center",color:"var(--muted)",fontSize:13}}>Not enough vehicles to compare by model yet.</div>
+              : <table style={{width:"100%",borderCollapse:"collapse",minWidth:600}}>
+                  <thead><tr>
+                    <th style={th}>Model</th>
+                    <th style={{...th,textAlign:"right"}}>On market</th>
+                    <th style={{...th,textAlign:"right"}}>Low</th>
+                    <th style={{...th,textAlign:"right"}}>Median</th>
+                    <th style={{...th,textAlign:"right"}}>High</th>
+                    <th style={{...th,textAlign:"right"}}>Cut price</th>
+                  </tr></thead>
+                  <tbody>
+                    {byModel.map(m=>(
+                      <tr key={m.model}>
+                        <td style={td}>{m.model}</td>
+                        <td style={{...td,textAlign:"right"}}>{m.n}</td>
+                        <td style={{...td,textAlign:"right",color:"var(--muted)"}}>{money(m.low)}</td>
+                        <td style={{...td,textAlign:"right"}}>{money(m.mid)}</td>
+                        <td style={{...td,textAlign:"right",color:"var(--muted)"}}>{money(m.high)}</td>
+                        <td style={{...td,textAlign:"right",color:m.drops?"#e0574f":"var(--muted)"}}>{m.drops}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+          )}
+        </div>
+      </div>
+
+      <p style={{fontSize:11,color:"var(--dim3)",marginTop:14,lineHeight:1.7,fontWeight:300}}>
+        "Days tracked" counts from the first scan that saw the car — not from when the store listed it.
+        A vehicle may have been sitting long before tracking began.
+      </p>
+    </>
+  );
+}
+
 function StoreInventoryView({clients}) {
   const [vehicles, setVehicles] = React.useState([]);
   const [scanning, setScanning] = React.useState(false);
@@ -4682,7 +4878,7 @@ function App() {
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.26)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
-          {[["Dashboard","dashboard"],["My Numbers","sales"],["Clients","list"],["Quick Quote","quickquote"],["Sourcing ✦","source"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Forms","forms"],["Recalls","recalls"],["Stores","stores"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
+          {[["Dashboard","dashboard"],["My Numbers","sales"],["Clients","list"],["Quick Quote","quickquote"],["Sourcing ✦","source"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Forms","forms"],["Recalls","recalls"],["Stores","stores"],["Market ✦","market"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
             <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"11px 13px",background:view===v?gold:"transparent",border:view===v?"1px solid "+goldBright:"1px solid transparent",borderRadius:3,color:view===v?goldInk:"var(--nav-text)",fontSize:13,fontWeight:view===v?500:400,letterSpacing:"0.16em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}
               onMouseEnter={e=>{if(view!==v){e.currentTarget.style.background="rgba(212,168,67,0.14)";e.currentTarget.style.color=goldBright;}}}
               onMouseLeave={e=>{if(view!==v){e.currentTarget.style.background="transparent";e.currentTarget.style.color="var(--nav-text)";}}}>
@@ -4781,6 +4977,7 @@ function App() {
         {view==="quickquote" && <QuickQuoteView />}
         {view==="recalls" && <RecallMonitorView />}
         {view==="stores" && <StoreInventoryView clients={clients} />}
+        {view==="market" && <MarketView />}
         {view==="source" && <SourcingView onNewLead={(want)=>{ setClientPrefill({vehicle_of_interest: want, stage:"New Lead"}); setView("new"); }} />}
         {view==="appraise" && <AppraisalView />}
         {view==="sales" && <SalesView />}
