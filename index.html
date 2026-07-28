@@ -19,6 +19,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>if(window['pdfjs-dist/build/pdf'])window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3397,6 +3398,169 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
 }
 
 // ── SALES PERFORMANCE ──────────────────────────────────────────────
+// ── BULK DEAL IMPORT (zip of recap images → dedup → review → save) ──
+function BulkDealImport({ existingDeals, onImport, onClose }) {
+  const [stage, setStage] = React.useState("drop"); // drop | working | review
+  const [progress, setProgress] = React.useState({ done: 0, total: 0 });
+  const [rows, setRows] = React.useState([]);
+  const [skipped, setSkipped] = React.useState({ dupeFiles: 0, dupeDeals: 0, failed: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const [note, setNote] = React.useState(null);
+
+  const existingKeys = React.useMemo(() => {
+    const s = new Set();
+    (existingDeals || []).forEach(d => {
+      const m = /DMS (\d{5,})/.exec(d.notes || "");
+      if (m) s.add("dms:" + m[1]);
+      s.add("df:" + (d.date || "") + "|" + (Math.round((Number(d.front)||0)*100)));
+    });
+    return s;
+  }, [existingDeals]);
+
+  const sha = async (buf) => {
+    const h = await crypto.subtle.digest("SHA-256", buf);
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
+  };
+  const iso = (d) => {
+    if (!d) return "";
+    const m = String(d).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? `${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}` : d;
+  };
+
+  const handleZip = async (file) => {
+    if (!window.JSZip) { setNote("Zip reader not loaded — refresh and try again."); return; }
+    setStage("working"); setNote(null);
+    let zip;
+    try { zip = await window.JSZip.loadAsync(file); } catch (e) { setNote("Could not open that .zip file."); setStage("drop"); return; }
+    const imgs = [];
+    zip.forEach((path, entry) => {
+      if (entry.dir || path.includes("__MACOSX") || path.split("/").pop().startsWith(".")) return;
+      if (/\.(png|jpe?g)$/i.test(path)) imgs.push(entry);
+    });
+    if (!imgs.length) { setNote("No images found in that zip."); setStage("drop"); return; }
+
+    setProgress({ done: 0, total: imgs.length });
+    const seenFiles = new Set();
+    const batchKeys = new Set();
+    const out = [];
+    const skip = { dupeFiles: 0, dupeDeals: 0, failed: 0 };
+
+    for (let i = 0; i < imgs.length; i++) {
+      try {
+        const buf = await imgs[i].async("arraybuffer");
+        const fh = await sha(buf);
+        if (seenFiles.has(fh)) { skip.dupeFiles++; setProgress({ done: i + 1, total: imgs.length }); continue; }
+        seenFiles.add(fh);
+        const b64 = btoa(new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), ""));
+        const mediaType = /\.png$/i.test(imgs[i].name) ? "image/png" : "image/jpeg";
+        const res = await fetch("/.netlify/functions/deal-extract", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: b64, mediaType }),
+        });
+        const { fields, error } = await res.json();
+        if (error || !fields) { skip.failed++; setProgress({ done: i + 1, total: imgs.length }); continue; }
+        const key = fields.dms_id ? "dms:" + fields.dms_id : "df:" + iso(fields.date) + "|" + Math.round((Number(fields.front)||0)*100);
+        if (existingKeys.has(key) || existingKeys.has("df:" + iso(fields.date) + "|" + Math.round((Number(fields.front)||0)*100))) { skip.dupeDeals++; setProgress({ done: i + 1, total: imgs.length }); continue; }
+        if (batchKeys.has(key)) { skip.dupeDeals++; setProgress({ done: i + 1, total: imgs.length }); continue; }
+        batchKeys.add(key);
+        out.push({ include: true, ...fields });
+      } catch (e) { skip.failed++; }
+      setProgress({ done: i + 1, total: imgs.length });
+    }
+    setRows(out); setSkipped(skip); setStage("review");
+  };
+
+  const save = () => {
+    const chosen = rows.filter(r => r.include);
+    const mapped = chosen.map(r => {
+      const noteParts = [r.dms_id ? "DMS " + r.dms_id : "DMS (none)", r.vin ? "VIN " + r.vin : null, r.salesperson ? "Sold by " + r.salesperson : null, r.buyer ? "Buyer " + r.buyer : null].filter(Boolean);
+      return {
+        id: r.dms_id ? Number(r.dms_id) : Date.now() + Math.floor(Math.random() * 100000),
+        date: iso(r.date), vehicle: r.vehicle || "", stockNum: r.stock_num || "",
+        type: (r.type || "used").toLowerCase(), front: Number(r.front) || 0, back: Number(r.back) || 0,
+        notes: noteParts.join(" · "),
+      };
+    });
+    onImport(mapped);
+  };
+
+  const cell = { padding: "7px 9px", fontSize: 12, color: "var(--text)", borderBottom: "1px solid var(--w04)" };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", zIndex: 400, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 20, overflowY: "auto" }}>
+      <div style={{ background: "var(--surface)", borderRadius: 6, padding: 26, width: "100%", maxWidth: 820, margin: "20px 0", border: "1px solid rgba(201,168,76,0.2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: "0.4em", color: gold, textTransform: "uppercase", marginBottom: 4 }}>Bulk Import</div>
+            <h2 style={{ fontSize: 22, fontFamily: "'Cormorant Garamond',serif", color: "var(--text)" }}>Import a Zip of Deals</h2>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>
+        </div>
+
+        {stage === "drop" && (
+          <div onClick={() => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".zip"; inp.onchange = e => e.target.files[0] && handleZip(e.target.files[0]); inp.click(); }}
+            onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)}
+            onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleZip(f); }}
+            style={{ border: `2px dashed ${dragging ? gold : "rgba(201,168,76,0.3)"}`, borderRadius: 6, padding: 46, textAlign: "center", cursor: "pointer", background: dragging ? "rgba(201,168,76,0.05)" : "var(--bg)" }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🗂️</div>
+            <div style={{ fontSize: 14, color: "var(--text)", marginBottom: 6 }}>Drop a .zip of deal recap screenshots or photos</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Reads each one, removes duplicates automatically, and lets you review before saving</div>
+          </div>
+        )}
+        {note && <div style={{ color: "#fca5a5", fontSize: 12, marginTop: 12 }}>⚠ {note}</div>}
+
+        {stage === "working" && (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14 }}>Reading deals… {progress.done} of {progress.total}</div>
+            <div style={{ height: 6, background: "var(--w06)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%`, background: gold, transition: "width 0.3s" }} />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--dim2)", marginTop: 12 }}>Photos take a few seconds each — hang tight.</div>
+          </div>
+        )}
+
+        {stage === "review" && (
+          <div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+              <span style={{ color: "#6fcf97" }}>✓ {rows.length} new deal{rows.length !== 1 ? "s" : ""} ready</span>
+              {skipped.dupeFiles + skipped.dupeDeals > 0 && <span> · {skipped.dupeFiles + skipped.dupeDeals} duplicate{skipped.dupeFiles + skipped.dupeDeals !== 1 ? "s" : ""} skipped</span>}
+              {skipped.failed > 0 && <span style={{ color: "#fcd34d" }}> · {skipped.failed} couldn't be read</span>}
+            </div>
+            {rows.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: "var(--muted)", fontSize: 13 }}>Every deal in this zip is already in your numbers — nothing new to add.</div>
+            ) : (
+              <div style={{ maxHeight: "48vh", overflowY: "auto", border: "1px solid var(--w06)", borderRadius: 4 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+                  <thead><tr style={{ position: "sticky", top: 0, background: "var(--surface)" }}>
+                    {["", "Date", "Vehicle", "Type", "Front", "Back", "DMS"].map(h => <th key={h} style={{ ...cell, textAlign: "left", fontSize: 9, letterSpacing: "0.15em", color: gold, textTransform: "uppercase" }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i} style={{ opacity: r.include ? 1 : 0.4 }}>
+                        <td style={cell}><input type="checkbox" checked={r.include} onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, include: e.target.checked } : x))} /></td>
+                        <td style={cell}>{iso(r.date)}</td>
+                        <td style={cell}>{r.vehicle}{r.salesperson && r.salesperson !== "Adam Russell" ? <span style={{ color: "#fcd34d", fontSize: 10 }}> · {r.salesperson}</span> : null}</td>
+                        <td style={cell}>{(r.type || "").toLowerCase()}</td>
+                        <td style={cell}>${(Number(r.front) || 0).toLocaleString()}</td>
+                        <td style={cell}>${(Number(r.back) || 0).toLocaleString()}</td>
+                        <td style={{ ...cell, color: "var(--dim2)" }}>{r.dms_id || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={onClose} style={{ padding: "10px 20px", background: "var(--bg)", border: "1px solid var(--w10)", borderRadius: 3, color: "var(--muted)", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", cursor: "pointer" }}>Cancel</button>
+              {rows.length > 0 && <button onClick={save} style={{ padding: "10px 24px", background: "rgba(201,168,76,0.18)", border: "1px solid rgba(201,168,76,0.5)", borderRadius: 3, color: gold, fontSize: 11, letterSpacing: "0.22em", textTransform: "uppercase", cursor: "pointer" }}>Import {rows.filter(r => r.include).length} Deals →</button>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SalesView() {
   const [deals, setDeals] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('pinnacle_sales_deals') || '[]'); } catch { return []; }
@@ -3445,6 +3609,7 @@ function SalesView() {
   const [showGoals, setShowGoals] = React.useState(false);
   const [editIdx, setEditIdx] = React.useState(null);
   const [showPdfImport, setShowPdfImport] = React.useState(false);
+  const [showBulk, setShowBulk] = React.useState(false);
   const [pdfDragging, setPdfDragging] = React.useState(false);
   const [pdfParsing, setPdfParsing] = React.useState(false);
   const [pdfPreview, setPdfPreview] = React.useState(null);
@@ -3690,6 +3855,7 @@ function SalesView() {
           {syncStatus&&<span style={{fontSize:10,letterSpacing:"0.15em",color:syncStatus==='saved'?"#6fcf97":syncStatus==='error'?"#fca5a5":gold,alignSelf:"center"}}>{syncStatus==='saving'?"Syncing…":syncStatus==='saved'?"✓ Saved to cloud":"⚠ Offline — saved locally"}</span>}
           <button onClick={()=>{setGoalForm({...goals});setShowGoals(true);}} style={{padding:"10px 18px",background:"var(--w04)",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted)",fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>Set Goals</button>
           <button onClick={()=>{setPdfPreview(null);setPdfError(null);setShowPdfImport(true);}} style={{padding:"10px 18px",background:"rgba(201,168,76,0.16)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>📄 Import Sheet</button>
+          <button onClick={()=>setShowBulk(true)} style={{padding:"10px 18px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.35)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>🗂️ Bulk Import</button>
           <button onClick={()=>{setSpiffForm(emptySpiff);setShowSpiff(true);}} style={{padding:"10px 18px",background:"rgba(252,211,77,0.08)",border:"1px solid rgba(252,211,77,0.35)",borderRadius:3,color:"#fcd34d",fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>⚡ Log Spiff</button>
           <button onClick={()=>{setForm(emptyDeal);setEditIdx(null);setShowAdd(true);}} style={{padding:"10px 22px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>+ Log Deal</button>
         </div>
@@ -3957,6 +4123,20 @@ function SalesView() {
       )}
 
       {/* PDF Deal Sheet Import Modal */}
+      {showBulk && (
+        <BulkDealImport
+          existingDeals={deals}
+          onClose={()=>setShowBulk(false)}
+          onImport={(mapped)=>{
+            const have = new Set(deals.map(d=>String(d.id)));
+            const merged = [...deals, ...mapped.filter(m=>!have.has(String(m.id)))];
+            setDeals(merged);
+            persistDeals(merged);
+            setShowBulk(false);
+          }}
+        />
+      )}
+      
       {showPdfImport&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
           <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:8,width:"100%",maxWidth:560,maxHeight:"85vh",overflowY:"auto"}}>
