@@ -333,7 +333,165 @@ function JessicaAvatar({size=40}) {
   );
 }
 
-function AgentView() {
+// ── JESSICA COPILOT — command center for Adam ────────────────────────
+function AgentView({clients, onNav}) {
+  const [tool, setTool] = React.useState(null); // null | 'briefing' | 'recall' | 'arrivals' | 'drops' | 'sim'
+  const [groupInv, setGroupInv] = React.useState([]);
+  React.useEffect(()=>{ sb.from('store_inventory').select('*').then(({data})=>{ if(data) setGroupInv(data); }); },[]);
+
+  // Recall tool state
+  const [recallVin, setRecallVin] = React.useState('');
+  const [recallBusy, setRecallBusy] = React.useState(false);
+  const [recallResult, setRecallResult] = React.useState(null);
+  const checkRecalls = async (vinArg) => {
+    const vin = (typeof vinArg==='string'?vinArg:recallVin).trim().toUpperCase();
+    if (vin.length < 11) { setRecallResult({error:'Enter at least the first 11 characters of the VIN.'}); return; }
+    setRecallBusy(true); setRecallResult(null);
+    try {
+      const res = await fetch('https://api.nhtsa.gov/recalls/vehicle?vin='+vin);
+      const d = await res.json();
+      setRecallResult({vin, recalls: d.results||[]});
+    } catch(e) { setRecallResult({error:'Recall lookup failed — check your connection.'}); }
+    setRecallBusy(false);
+  };
+
+  // Briefing computation
+  const briefing = React.useMemo(()=>{
+    const active = (clients||[]).filter(c=>c.stage!=='Closed'&&c.stage!=='Lost');
+    let localInv=[]; try{ localInv=JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); }catch{}
+    const inv=[...localInv, ...groupInv];
+    const matches=[]; active.forEach(c=>inv.forEach(v=>{const m=scoreVehicleMatch(c,v); if(m.score>=90) matches.push({c,v,score:m.score});}));
+    const now=Date.now();
+    const cold=active.filter(c=>Math.floor((now-new Date(c.updated_at||c.created_at))/86400000)>=5);
+    const cutoff=now-2*86400000;
+    const arrivals=groupInv.filter(v=>v.first_seen&&Date.parse(v.first_seen)>cutoff);
+    const drops=groupInv.filter(v=>v.price_dropped_at&&Date.parse(v.price_dropped_at)>now-14*86400000);
+    return {matches:matches.slice(0,10), cold, arrivals, drops, activeCount:active.length};
+  },[clients, groupInv]);
+
+  const arrivals7 = React.useMemo(()=>groupInv.filter(v=>v.first_seen&&Date.parse(v.first_seen)>Date.now()-7*86400000).sort((a,b)=>Date.parse(b.first_seen)-Date.parse(a.first_seen)),[groupInv]);
+  const drops14 = React.useMemo(()=>groupInv.filter(v=>v.price_dropped_at&&Date.parse(v.price_dropped_at)>Date.now()-14*86400000).sort((a,b)=>Date.parse(b.price_dropped_at)-Date.parse(a.price_dropped_at)),[groupInv]);
+
+  const Card = ({icon, title, sub, badge, onClick}) => (
+    <button onClick={onClick} style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:5,padding:"18px 18px",cursor:"pointer",textAlign:"left",display:"flex",gap:14,alignItems:"flex-start",transition:"all 0.15s",position:"relative"}}
+      onMouseEnter={e=>{e.currentTarget.style.borderColor=gold;e.currentTarget.style.background="var(--surface-hover)";}}
+      onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.34)";e.currentTarget.style.background="var(--surface)";}}>
+      <span style={{fontSize:24,lineHeight:1}}>{icon}</span>
+      <span style={{flex:1}}>
+        <span style={{display:"block",fontSize:14,color:"var(--text)",fontWeight:500,marginBottom:3}}>{title}</span>
+        <span style={{display:"block",fontSize:11.5,color:"var(--muted)",lineHeight:1.5}}>{sub}</span>
+      </span>
+      {badge>0 && <span style={{position:"absolute",top:10,right:12,minWidth:22,height:22,padding:"0 6px",borderRadius:11,background:"rgba(110,231,183,0.15)",border:"1px solid rgba(110,231,183,0.5)",color:"#6ee7b7",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>{badge}</span>}
+    </button>
+  );
+
+  const VehRow = ({v, extra}) => (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,marginBottom:6,gap:10,flexWrap:"wrap"}}>
+      {v.photo_url && <img src={v.photo_url} alt="" loading="lazy" style={{width:64,height:46,objectFit:"cover",borderRadius:3,flexShrink:0,border:"1px solid rgba(201,168,76,0.25)"}} onError={e=>{e.currentTarget.style.display='none';}} />}
+      <div style={{flex:1,minWidth:160}}>
+        <div style={{fontSize:13,color:"var(--text)"}}>{[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')}</div>
+        <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{[v.store, v.mileage?`${Number(v.mileage).toLocaleString()} mi`:null, extra].filter(Boolean).join(' · ')}</div>
+        {v.detail_url && <a href={v.detail_url} target="_blank" rel="noopener" style={{fontSize:10,color:gold,letterSpacing:"0.1em",textTransform:"uppercase",textDecoration:"underline"}}>View at store ↗</a>}
+      </div>
+      <div style={{textAlign:"right"}}>
+        {v.price && <div style={{fontSize:14,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price).toLocaleString()}</div>}
+        {v.prev_price && v.price && <div style={{fontSize:10,color:"#fcd34d"}}>was ${Number(v.prev_price).toLocaleString()}</div>}
+      </div>
+    </div>
+  );
+
+  const BackBtn = () => <button onClick={()=>setTool(null)} style={{background:"none",border:"none",color:"var(--dim)",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer",marginBottom:18}}>← Back to Jessica</button>;
+
+  if (tool === 'sim') return (<div style={{maxWidth:680}}><BackBtn /><LeadSimChat /></div>);
+
+  return (
+    <div style={{maxWidth:760,paddingBottom:60}}>
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
+        <JessicaAvatar size={56} />
+        <div>
+          <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:4}}>Your Copilot</div>
+          <h1 style={{fontSize:30,color:"var(--text)",fontFamily:"'Cormorant Garamond',serif"}}>Jessica</h1>
+          <div style={{fontSize:11,color:"#6fcf97",marginTop:2}}>● Watching {briefing.activeCount} active clients and 6 stores</div>
+        </div>
+      </div>
+
+      {!tool && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))",gap:10,marginBottom:20}}>
+          <Card icon="☀️" title="Today's Briefing" sub="Matches, cold leads, new arrivals and drops — your morning in 20 seconds." badge={briefing.matches.length + briefing.drops.length} onClick={()=>setTool('briefing')} />
+          <Card icon="🔎" title="Source a Vehicle" sub="Client wants something specific? Search your lot + all five group stores." onClick={()=>onNav&&onNav('source')} />
+          <Card icon="🛞" title="Recall Check" sub="Scan or paste a VIN — open recalls straight from the federal database." onClick={()=>setTool('recall')} />
+          <Card icon="📈" title="Trade Market Check" sub="Work up a trade: decode the VIN, market picture, estimated value." onClick={()=>onNav&&onNav('appraise')} />
+          <Card icon="🚗" title="New at the Group" sub="Everything that landed at the five stores in the last 7 days." badge={arrivals7.length} onClick={()=>setTool('arrivals')} />
+          <Card icon="📉" title="Price Drops" sub="Group vehicles marked down in the last 14 days — revival fuel." badge={drops14.length} onClick={()=>setTool('drops')} />
+          <Card icon="💬" title="Lead Simulator" sub="Watch Jessica work an inbound lead — great for training and demos." onClick={()=>setTool('sim')} />
+        </div>
+      )}
+
+      {tool==='briefing' && (
+        <div><BackBtn />
+          <GLine label={"Today's Briefing — " + new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} />
+          <div style={{marginTop:14}}>
+            <div style={{fontSize:11,letterSpacing:"0.25em",color:"#6ee7b7",textTransform:"uppercase",marginBottom:8}}>★ Hunter Matches ({briefing.matches.length})</div>
+            {briefing.matches.length===0 ? <div style={{fontSize:12,color:"var(--dim2)",marginBottom:16}}>No 90%+ matches right now.</div>
+              : briefing.matches.map(({c,v,score},i)=>(<div key={i} style={{fontSize:13,color:"var(--text)",marginBottom:8,padding:"8px 12px",background:"var(--bg)",border:"1px solid rgba(110,231,183,0.3)",borderRadius:3}}><b>{score}%</b> — {c.first_name} {c.last_name} → {[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')}{v.store?` (${v.store})`:''}{v.price?` · $${Number(v.price).toLocaleString()}`:''}</div>))}
+            <div style={{fontSize:11,letterSpacing:"0.25em",color:"#fca5a5",textTransform:"uppercase",margin:"16px 0 8px"}}>❄ Going Cold ({briefing.cold.length})</div>
+            {briefing.cold.length===0 ? <div style={{fontSize:12,color:"var(--dim2)"}}>Nobody's gone quiet. Nice work.</div>
+              : briefing.cold.slice(0,8).map((c,i)=>(<div key={i} style={{fontSize:13,color:"var(--muted)",marginBottom:5}}>{c.first_name} {c.last_name} — {c.vehicle_of_interest||c.stage} · {Math.floor((Date.now()-new Date(c.updated_at||c.created_at))/86400000)}d quiet</div>))}
+            <div style={{fontSize:11,letterSpacing:"0.25em",color:gold,textTransform:"uppercase",margin:"16px 0 8px"}}>🚗 New at the Group — last 48h ({briefing.arrivals.length})</div>
+            {briefing.arrivals.length===0 ? <div style={{fontSize:12,color:"var(--dim2)"}}>No new group arrivals since yesterday's scan.</div>
+              : briefing.arrivals.slice(0,8).map((v,i)=><VehRow key={i} v={v} />)}
+            <div style={{fontSize:11,letterSpacing:"0.25em",color:"#fcd34d",textTransform:"uppercase",margin:"16px 0 8px"}}>📉 Fresh Price Drops ({briefing.drops.length})</div>
+            {briefing.drops.length===0 ? <div style={{fontSize:12,color:"var(--dim2)"}}>No markdowns in the last two weeks.</div>
+              : briefing.drops.slice(0,8).map((v,i)=><VehRow key={i} v={v} />)}
+          </div>
+        </div>
+      )}
+
+      {tool==='recall' && (
+        <div><BackBtn />
+          <GLine label="Recall Check" />
+          <div style={{display:"flex",gap:8,margin:"14px 0",flexWrap:"wrap"}}>
+            <input value={recallVin} onChange={e=>setRecallVin(e.target.value.toUpperCase())} maxLength={17} placeholder="Paste or scan a VIN…" onKeyDown={e=>{if(e.key==='Enter')checkRecalls();}}
+              style={{flex:1,minWidth:180,padding:"12px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:3,color:"var(--text)",fontSize:14,fontFamily:"monospace"}} />
+            <VinScanButton onVin={(v)=>{setRecallVin(v); checkRecalls(v);}} />
+            <button onClick={()=>checkRecalls()} disabled={recallBusy} style={{padding:"12px 22px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>{recallBusy?"Checking…":"Check ✦"}</button>
+          </div>
+          {recallResult?.error && <div style={{fontSize:12,color:"#fcd34d"}}>⚠ {recallResult.error}</div>}
+          {recallResult?.recalls && (recallResult.recalls.length===0
+            ? <div style={{padding:"14px 16px",background:"rgba(110,231,183,0.06)",border:"1px solid rgba(110,231,183,0.35)",borderRadius:3,fontSize:13,color:"#6ee7b7"}}>✓ No open recalls found for {recallResult.vin}.</div>
+            : recallResult.recalls.map((r,i)=>(
+              <div key={i} style={{padding:"12px 16px",background:"rgba(252,165,165,0.05)",border:"1px solid rgba(252,165,165,0.3)",borderRadius:3,marginBottom:8}}>
+                <div style={{fontSize:12,color:"#fca5a5",fontWeight:600,marginBottom:4}}>⚠ {r.Component||'Recall'}</div>
+                <div style={{fontSize:12,color:"var(--muted)",lineHeight:1.6}}>{(r.Summary||'').slice(0,240)}{(r.Summary||'').length>240?'…':''}</div>
+                {r.NHTSACampaignNumber && <div style={{fontSize:10,color:"var(--dim2)",marginTop:4}}>Campaign {r.NHTSACampaignNumber}</div>}
+              </div>)))}
+        </div>
+      )}
+
+      {tool==='arrivals' && (
+        <div><BackBtn />
+          <GLine label={`New at the Group — Last 7 Days (${arrivals7.length})`} />
+          <div style={{marginTop:14}}>
+            {arrivals7.length===0 ? <div style={{fontSize:13,color:"var(--dim2)"}}>Nothing new this week — Jessica scans every morning at 7am.</div>
+              : arrivals7.map((v,i)=><VehRow key={i} v={v} extra={`arrived ${new Date(v.first_seen).toLocaleDateString()}`} />)}
+          </div>
+        </div>
+      )}
+
+      {tool==='drops' && (
+        <div><BackBtn />
+          <GLine label={`Group Price Drops — Last 14 Days (${drops14.length})`} />
+          <div style={{marginTop:14}}>
+            {drops14.length===0 ? <div style={{fontSize:13,color:"var(--dim2)"}}>No markdowns yet — drops appear after Jessica sees a price change between scans.</div>
+              : drops14.map((v,i)=><VehRow key={i} v={v} extra={`dropped ${new Date(v.price_dropped_at).toLocaleDateString()}`} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeadSimChat() {
   const [messages, setMessages] = React.useState([]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -1306,14 +1464,19 @@ function SourcingView({onNewLead}) {
           {results.map(({v,score},i)=>{
             const t = tier(score);
             return (
-              <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"14px 16px",background:"var(--surface)",border:`1px solid ${score>=90?"rgba(110,231,183,0.45)":"rgba(201,168,76,0.3)"}`,borderRadius:4,flexWrap:"wrap"}}>
-                <div style={{width:44,height:44,borderRadius:"50%",background:`${score>=90?"rgba(110,231,183,0.12)":"rgba(201,168,76,0.12)"}`,border:`1px solid ${t.color}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,color:t.color,fontWeight:600}}>{score}%</div>
+              <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 14px",background:"var(--surface)",border:`1px solid ${score>=90?"rgba(110,231,183,0.45)":"rgba(201,168,76,0.3)"}`,borderRadius:4,flexWrap:"wrap"}}>
+                {v.photo_url
+                  ? <img src={v.photo_url} alt="" loading="lazy" style={{width:88,height:62,objectFit:"cover",borderRadius:4,flexShrink:0,border:"1px solid rgba(201,168,76,0.3)"}} onError={e=>{e.currentTarget.style.display='none';}} />
+                  : <div style={{width:44,height:44,borderRadius:"50%",background:`${score>=90?"rgba(110,231,183,0.12)":"rgba(201,168,76,0.12)"}`,border:`1px solid ${t.color}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:12,color:t.color,fontWeight:600}}>{score}%</div>}
                 <div style={{flex:1,minWidth:170}}>
-                  <div style={{fontSize:15,color:"var(--text)"}}>{[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')}</div>
+                  <div style={{fontSize:15,color:"var(--text)"}}>{[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')} {v.photo_url && <span style={{fontSize:11,color:t.color,fontWeight:600,marginLeft:6}}>{score}%</span>}</div>
                   <div style={{fontSize:12,color:"var(--muted)",marginTop:3}}>
                     {[v.store, v.mileage?`${Number(v.mileage).toLocaleString()} mi`:null, v.condition, v.stock_number?`Stock ${v.stock_number}`:null].filter(Boolean).join(' · ')}
                   </div>
-                  <div style={{fontSize:10,color:t.color,letterSpacing:"0.12em",textTransform:"uppercase",marginTop:3}}>{t.label}</div>
+                  <div style={{display:"flex",gap:12,marginTop:5,alignItems:"center"}}>
+                    <span style={{fontSize:10,color:t.color,letterSpacing:"0.12em",textTransform:"uppercase"}}>{t.label}</span>
+                    {v.detail_url && <a href={v.detail_url} target="_blank" rel="noopener" style={{fontSize:10,color:gold,letterSpacing:"0.1em",textTransform:"uppercase",textDecoration:"underline"}}>View at {v.store||'store'} ↗</a>}
+                  </div>
                 </div>
                 <div style={{textAlign:"right"}}>
                   {v.price && <div style={{fontSize:17,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price).toLocaleString()}</div>}
@@ -4296,6 +4459,147 @@ function SalesView() {
   );
 }
 
+// ── BULK CLIENT IMPORT (CSV / Excel → client profiles) ──────────────
+function BulkClientImport({existingClients, onDone}) {
+  const [open, setOpen] = React.useState(false);
+  const [dragging, setDragging] = React.useState(false);
+  const [rows, setRows] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [report, setReport] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const fileRef = React.useRef(null);
+
+  const HEADER_MAP = [
+    ['first_name', ['first name','firstname','first']],
+    ['last_name', ['last name','lastname','surname','last']],
+    ['cell', ['cell phone','cell','mobile','phone number','phone']],
+    ['home_phone', ['home phone','home']],
+    ['primary_email', ['email','e-mail']],
+    ['street', ['street','address 1','address']],
+    ['city', ['city']],
+    ['zip', ['zip','postal']],
+    ['state', ['state']],
+    ['vehicle_of_interest', ['vehicle of interest','vehicle interest','vehicle','interest','model']],
+    ['lead_source', ['lead source','source','up type','uptype']],
+    ['notes', ['notes','comments','remarks']],
+  ];
+
+  const parseFile = (file) => {
+    setError(null); setReport(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        if (raw.length < 2) throw new Error('No data rows found in that file.');
+        const headers = raw[0].map(h=>String(h).toLowerCase().trim());
+        const used = new Set();
+        const colFor = {};
+        HEADER_MAP.forEach(([field, keys]) => {
+          let idx = headers.findIndex((h,i)=>!used.has(i) && keys.some(k=>h===k));
+          if (idx === -1) idx = headers.findIndex((h,i)=>!used.has(i) && keys.some(k=>h.includes(k)));
+          if (idx > -1) { colFor[field]=idx; used.add(idx); }
+        });
+        const nameIdx = headers.findIndex((h,i)=>!used.has(i) && ['full name','customer name','client name','name','customer','client'].some(k=>h===k||h.includes(k)));
+        const parsed = raw.slice(1).filter(r=>r.some(c=>String(c).trim())).map(r=>{
+          const row = {stage:'New Lead'};
+          Object.entries(colFor).forEach(([f,idx])=>{ const val=String(r[idx]??'').trim(); if(val) row[f]=val; });
+          if (!row.first_name && nameIdx>-1) {
+            const rawName = String(r[nameIdx]||'').trim();
+            if (rawName.includes(',')) { const p=rawName.split(','); row.last_name=p[0].trim(); row.first_name=(p[1]||'').trim(); }
+            else { const p=rawName.split(/\s+/); row.first_name=p[0]||''; row.last_name=p.slice(1).join(' '); }
+          }
+          ['cell','home_phone'].forEach(f=>{ if(row[f]) row[f]=row[f].replace(/\D/g,'').replace(/^1(\d{10})$/,'$1').replace(/(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3'); });
+          if (row.lead_source && !SOURCES.includes(row.lead_source)) {
+            const hit = SOURCES.find(s=>row.lead_source.toLowerCase().includes(s.toLowerCase()));
+            row.lead_source = hit || 'Other';
+          }
+          return row;
+        }).filter(r=>r.first_name||r.last_name||r.primary_email||r.cell);
+        if (parsed.length===0) throw new Error("Found the file, but couldn't recognize name/phone/email columns. Check the header row.");
+        const exPhones = new Set((existingClients||[]).map(c=>(c.cell||'').replace(/\D/g,'')).filter(p=>p.length>=10));
+        const exEmails = new Set((existingClients||[]).map(c=>(c.primary_email||'').toLowerCase()).filter(Boolean));
+        const fresh=[], dupes=[];
+        parsed.forEach(r=>{
+          const p=(r.cell||'').replace(/\D/g,''); const em=(r.primary_email||'').toLowerCase();
+          if ((p && exPhones.has(p)) || (em && exEmails.has(em))) dupes.push(r); else fresh.push(r);
+        });
+        setRows({fresh, dupes, fields:[...Object.keys(colFor), ...(nameIdx>-1&&!colFor.first_name?['name → first/last']:[])]});
+      } catch(err){ setError(err.message); }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const doImport = async () => {
+    setSaving(true); setError(null);
+    try {
+      for (let i=0; i<rows.fresh.length; i+=50) {
+        const { error: err } = await sb.from('clients').insert(rows.fresh.slice(i, i+50));
+        if (err) throw new Error(err.message);
+      }
+      setReport(`✓ ${rows.fresh.length} client profiles created${rows.dupes.length?` — ${rows.dupes.length} skipped (already in your roster)`:''}`);
+      setRows(null);
+      onDone && onDone();
+    } catch(e){ setError('Import failed: '+e.message); }
+    setSaving(false);
+  };
+
+  if (!open) return (
+    <button onClick={()=>{setOpen(true);setRows(null);setReport(null);setError(null);}} style={{padding:"12px 20px",background:"rgba(201,168,76,0.16)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>📥 Bulk Import</button>
+  );
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.42)",borderRadius:6,width:"100%",maxWidth:560,maxHeight:"88vh",overflowY:"auto",padding:26}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <div>
+            <div style={{fontSize:10,letterSpacing:"0.35em",color:gold,textTransform:"uppercase",marginBottom:4}}>Bulk Import</div>
+            <h2 style={{fontSize:22,fontFamily:"'Cormorant Garamond',serif",color:"var(--text)"}}>Import Clients from a Spreadsheet</h2>
+          </div>
+          <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",color:"var(--muted2)",fontSize:18,cursor:"pointer",padding:"4px 8px"}}>✕</button>
+        </div>
+
+        {!rows && (
+          <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
+            onDrop={e=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files[0];if(f)parseFile(f);}}
+            onClick={()=>fileRef.current?.click()}
+            style={{border:`2px dashed ${dragging?gold:"rgba(201,168,76,0.42)"}`,borderRadius:6,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:dragging?"rgba(201,168,76,0.06)":"transparent",transition:"all 0.15s",marginBottom:14}}>
+            <div style={{fontSize:30,marginBottom:10}}>📥</div>
+            <div style={{fontSize:14,color:"var(--text)",marginBottom:6}}>Drop your client list here</div>
+            <div style={{fontSize:12,color:"var(--muted)"}}>Excel (.xlsx) or CSV — or click to browse. Jessica figures out the columns.</div>
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])parseFile(e.target.files[0]);e.target.value='';}} />
+          </div>
+        )}
+
+        {rows && (
+          <div>
+            <div style={{padding:"14px 16px",background:"rgba(110,231,183,0.06)",border:"1px solid rgba(110,231,183,0.35)",borderRadius:4,marginBottom:14}}>
+              <div style={{fontSize:14,color:"#6ee7b7",marginBottom:6}}>Ready: {rows.fresh.length} new client{rows.fresh.length!==1?'s':''}{rows.dupes.length>0?` · ${rows.dupes.length} duplicate${rows.dupes.length!==1?'s':''} will be skipped`:''}</div>
+              <div style={{fontSize:11,color:"var(--muted)"}}>Recognized columns: {rows.fields.join(', ')||'—'}</div>
+            </div>
+            <div style={{marginBottom:14,maxHeight:200,overflowY:"auto"}}>
+              {rows.fresh.slice(0,8).map((r,i)=>(
+                <div key={i} style={{fontSize:12.5,color:"var(--muted)",padding:"6px 4px",borderBottom:"1px solid var(--w05)"}}>
+                  <span style={{color:"var(--text)"}}>{r.first_name} {r.last_name}</span>{r.cell?` · ${r.cell}`:''}{r.primary_email?` · ${r.primary_email}`:''}{r.vehicle_of_interest?` · ${r.vehicle_of_interest}`:''}
+                </div>
+              ))}
+              {rows.fresh.length>8 && <div style={{fontSize:11,color:"var(--dim2)",padding:"6px 4px"}}>…and {rows.fresh.length-8} more</div>}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={doImport} disabled={saving||rows.fresh.length===0} style={{padding:"12px 26px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>{saving?"Importing…":`Import ${rows.fresh.length} Clients`}</button>
+              <button onClick={()=>setRows(null)} style={{padding:"12px 18px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--muted2)",fontSize:12,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>Different File</button>
+            </div>
+          </div>
+        )}
+
+        {report && <div style={{marginTop:14,fontSize:13,color:"#6ee7b7"}}>{report}</div>}
+        {error && <div style={{marginTop:14,fontSize:13,color:"#fca5a5"}}>⚠ {error}</div>}
+      </div>
+    </div>
+  );
+}
+
  function ClientPDFImport({ onImport }) {
   const [open, setOpen] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
@@ -5122,7 +5426,10 @@ function App() {
               <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>All Clients</div>
               <h1 style={{fontSize:30,color:"var(--text)"}}>Client Roster</h1>
             </div>
-            <button onClick={()=>nav("new")} style={{padding:"12px 24px",background:gold,border:"1px solid "+goldBright,borderRadius:3,color:goldInk,fontSize:12,fontWeight:500,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>+ New Lead</button>
+            <div style={{display:"flex",gap:8}}>
+              <BulkClientImport existingClients={clients} onDone={fetch} />
+              <button onClick={()=>nav("new")} style={{padding:"12px 24px",background:gold,border:"1px solid "+goldBright,borderRadius:3,color:goldInk,fontSize:12,fontWeight:500,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>+ New Lead</button>
+            </div>
           </div>
           <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search clients…" style={{flex:1,minWidth:180,padding:"9px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:3,color:"var(--text)",fontSize:13,fontFamily:"'Jost',sans-serif",fontWeight:300}} />
@@ -5150,7 +5457,7 @@ function App() {
           <ClientForm key={"new-"+prefillKey} initial={clientPrefill} onSave={handleSave} onCancel={()=>{nav("list");setClientPrefill(null);}} saving={saving} />
         </>}
 
-        {view==="agent" && <AgentView />}
+        {view==="agent" && <AgentView clients={clients} onNav={nav} />}
         {view==="dashboard" && <DashboardView clients={clients}
           onFilterStage={(s)=>{setStageFilter(s);nav("list");}}
           onFilterSource={(s)=>{setSearch(s);nav("list");}}
