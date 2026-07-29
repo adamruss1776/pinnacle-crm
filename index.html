@@ -563,6 +563,8 @@ function AgentView({clients, onNav}) {
   const BackBtn = () => <button onClick={()=>setTool(null)} style={{background:"none",border:"none",color:"var(--dim)",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer",marginBottom:18}}>← Back to Jessica</button>;
 
   if (tool === 'decoder') return (<div style={{maxWidth:700}}><BackBtn /><DealSheetDecoder /></div>);
+  if (tool === 'reconcile') return (<div style={{maxWidth:700}}><BackBtn /><InventoryReconcile /></div>);
+  if (tool === 'social') return (<div style={{maxWidth:700}}><BackBtn /><SocialPostWriter /></div>);
 
   if (tool === 'sim') return (<div style={{maxWidth:680}}><BackBtn /><LeadSimChat /></div>);
 
@@ -586,6 +588,8 @@ function AgentView({clients, onNav}) {
           <Card icon="🚗" title="New at the Group" sub="Everything that landed at the five stores in the last 7 days." badge={arrivals7.length} onClick={()=>setTool('arrivals')} />
           <Card icon="📉" title="Price Drops" sub="Group vehicles marked down in the last 14 days — revival fuel." badge={drops14.length} onClick={()=>setTool('drops')} />
           <Card icon="🧮" title="Deal Sheet Decoder" sub="Drop a worksheet — Jessica rebuilds the math line by line and shows the rate behind it." onClick={()=>setTool('decoder')} />
+          <Card icon="📣" title="Social Post Writer" sub="Pick a car, Jessica writes the Marketplace listing. You approve and post it." onClick={()=>setTool('social')} />
+          <Card icon="🧹" title="Inventory Reconcile" sub="Find cars still in Pinnacle that have come off the store website." onClick={()=>setTool('reconcile')} />
           <Card icon="💬" title="Lead Simulator" sub="Watch Jessica work an inbound lead — great for training and demos." onClick={()=>setTool('sim')} />
         </div>
       )}
@@ -647,6 +651,189 @@ function AgentView({clients, onNav}) {
           <div style={{marginTop:14}}>
             {drops14.length===0 ? <div style={{fontSize:13,color:"var(--dim2)"}}>No markdowns yet — drops appear after Jessica sees a price change between scans.</div>
               : drops14.map((v,i)=><VehRow key={i} v={v} extra={`dropped ${new Date(v.price_dropped_at).toLocaleDateString()}`} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── INVENTORY RECONCILE — what's in Pinnacle but gone from the website ──
+function InventoryReconcile() {
+  const [busy, setBusy] = React.useState(false);
+  const [stage, setStage] = React.useState('');
+  const [result, setResult] = React.useState(null);
+  const [picked, setPicked] = React.useState({});
+  const [done, setDone] = React.useState(null);
+  const [error, setError] = React.useState(null);
+
+  const check = async (rescan) => {
+    setBusy(true); setError(null); setResult(null); setDone(null);
+    try {
+      if (rescan) { setStage('Re-scanning the store website…'); try { await fetch('/.netlify/functions/store-scan'); } catch {} }
+      setStage('Comparing…');
+      let local = []; try { local = JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); } catch {}
+      const { data: live } = await sb.from('store_inventory').select('vin,store,year,make,model,trim,price,last_seen');
+      const liveVins = new Set((live||[]).map(v=>(v.vin||'').trim().toUpperCase()).filter(Boolean));
+      const withVin = local.filter(v=>(v.vin||'').trim().length>=11);
+      const noVin  = local.filter(v=>(v.vin||'').trim().length<11);
+      const gone = withVin.filter(v=>!liveVins.has(v.vin.trim().toUpperCase()));
+      setResult({gone, kept: withVin.length-gone.length, noVin: noVin.length, liveCount: (live||[]).length});
+      setPicked(Object.fromEntries(gone.map((v,i)=>[i,true])));
+    } catch(e){ setError(e.message); }
+    setBusy(false); setStage('');
+  };
+
+  const removeChosen = () => {
+    const toRemove = result.gone.filter((_,i)=>picked[i]);
+    if (!toRemove.length) return;
+    const kill = new Set(toRemove.map(v=>v.vin.trim().toUpperCase()));
+    let local = []; try { local = JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); } catch {}
+    const next = local.filter(v=>!kill.has((v.vin||'').trim().toUpperCase()));
+    localStorage.setItem('pinnacle_inventory', JSON.stringify(next));
+    setDone(`✓ Removed ${toRemove.length} vehicle${toRemove.length!==1?'s':''} from your Pinnacle inventory. ${next.length} remain.`);
+    setResult(null);
+  };
+
+  return (
+    <div>
+      <GLine label="Inventory Reconcile" />
+      <div style={{fontSize:13,color:"var(--muted)",margin:"12px 0 16px",lineHeight:1.7}}>
+        Jessica compares the inventory inside Pinnacle against what's actually listed on your store's website right now, and shows you anything that's disappeared. <b style={{color:"var(--text)"}}>Nothing is removed unless you tick it and confirm.</b>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        <button onClick={()=>check(false)} disabled={busy} style={{padding:"12px 24px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>{busy?stage||'Working…':'Compare Now'}</button>
+        <button onClick={()=>check(true)} disabled={busy} style={{padding:"12px 18px",background:"rgba(110,231,183,0.08)",border:"1px solid rgba(110,231,183,0.4)",borderRadius:3,color:"#6ee7b7",fontSize:11,letterSpacing:"0.14em",textTransform:"uppercase",cursor:"pointer"}}>🌐 Re-scan site first</button>
+      </div>
+      {error && <div style={{fontSize:13,color:"#fca5a5",marginBottom:12}}>⚠ {error}</div>}
+      {done && <div style={{padding:"12px 16px",background:"rgba(110,231,183,0.06)",border:"1px solid rgba(110,231,183,0.35)",borderRadius:4,fontSize:13,color:"#6ee7b7"}}>{done}</div>}
+      {result && (
+        <div>
+          <div style={{fontSize:12,color:"var(--muted)",marginBottom:12}}>
+            Checked against {result.liveCount} vehicles live on the group sites · {result.kept} still listed{result.noVin?` · ${result.noVin} skipped (no VIN on file)`:''}
+          </div>
+          {result.gone.length===0
+            ? <div style={{padding:"16px 18px",background:"rgba(110,231,183,0.06)",border:"1px solid rgba(110,231,183,0.35)",borderRadius:4,fontSize:13,color:"#6ee7b7"}}>✓ Everything in your Pinnacle inventory is still on the website. Nothing to clean up.</div>
+            : <>
+              <div style={{fontSize:11,letterSpacing:"0.25em",color:"#fcd34d",textTransform:"uppercase",marginBottom:10}}>No longer on the site — {result.gone.length}</div>
+              {result.gone.map((v,i)=>(
+                <label key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.22)",borderRadius:3,marginBottom:6,cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!picked[i]} onChange={e=>setPicked(p=>({...p,[i]:e.target.checked}))} style={{width:17,height:17,accentColor:'#c9a84c',cursor:"pointer"}} />
+                  <span style={{flex:1}}>
+                    <span style={{display:"block",fontSize:13,color:"var(--text)"}}>{[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')}</span>
+                    <span style={{display:"block",fontSize:11,color:"var(--muted)",fontFamily:"monospace"}}>{v.vin}{v.price?` · $${Number(v.price).toLocaleString()}`:''}</span>
+                  </span>
+                </label>
+              ))}
+              <div style={{fontSize:11.5,color:"var(--dim2)",margin:"10px 0 14px",lineHeight:1.6}}>
+                A car can vanish from the site for a few days while it's getting photographed or sitting in service — untick anything you know is still yours.
+              </div>
+              <button onClick={removeChosen} style={{padding:"12px 24px",background:"rgba(252,165,165,0.1)",border:"1px solid rgba(252,165,165,0.5)",borderRadius:3,color:"#fca5a5",fontSize:12,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>
+                Remove {Object.values(picked).filter(Boolean).length} Selected
+              </button>
+            </>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SOCIAL POST WRITER — Jessica drafts, Adam approves and posts ────
+function SocialPostWriter() {
+  const [settings] = useSettings();
+  const [inv, setInv] = React.useState([]);
+  const [q, setQ] = React.useState('');
+  const [sel, setSel] = React.useState(null);
+  const [platform, setPlatform] = React.useState('marketplace');
+  const [angle, setAngle] = React.useState('classic');
+  const [draft, setDraft] = React.useState('');
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(()=>{ (async()=>{
+    let local=[]; try{ local=JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); }catch{}
+    const { data: remote } = await sb.from('store_inventory').select('*').eq('store','Fields Motorcars Orlando');
+    const byVin={}; (remote||[]).forEach(v=>{const k=(v.vin||'').trim().toUpperCase(); if(k)byVin[k]=v;});
+    const localVins=new Set(local.map(v=>(v.vin||'').trim().toUpperCase()).filter(Boolean));
+    setInv([...local.map(v=>({...v,...(byVin[(v.vin||'').trim().toUpperCase()]||{}),...v, photo_url:v.photo_url||byVin[(v.vin||'').trim().toUpperCase()]?.photo_url, detail_url:v.detail_url||byVin[(v.vin||'').trim().toUpperCase()]?.detail_url, price:v.price||byVin[(v.vin||'').trim().toUpperCase()]?.price})),
+             ...(remote||[]).filter(v=>!localVins.has((v.vin||'').trim().toUpperCase()))]);
+  })(); },[]);
+
+  const shown = React.useMemo(()=>{
+    if (!q.trim()) return inv.slice(0,8);
+    const probe={vehicle_of_interest:q};
+    return inv.map(v=>({v,s:scoreVehicleMatch(probe,v).score})).filter(x=>x.s>=50).sort((a,b)=>b.s-a.s).slice(0,8).map(x=>x.v);
+  },[inv,q]);
+
+  const build = (v, plat, ang) => {
+    const name = [v.year,v.make,v.model,v.trim].filter(Boolean).join(' ');
+    const price = v.price ? `$${Number(v.price).toLocaleString()}` : 'Call for pricing';
+    const miles = v.mileage ? `${Number(v.mileage).toLocaleString()} miles` : null;
+    const store = settings.dealership_name || 'Fields Motorcars Orlando';
+    const rep = settings.rep_name || '';
+    const phone = settings.rep_phone || '';
+    const specs = [miles, v.color?`${v.color} exterior`:null, v.stock_number?`Stock #${v.stock_number}`:null].filter(Boolean);
+    const contact = [rep && `${rep}${settings.rep_title?`, ${settings.rep_title}`:''}`, phone, store].filter(Boolean).join('\n');
+    const link = v.detail_url ? `\n\nFull details and photos:\n${v.detail_url}` : '';
+
+    if (plat === 'marketplace') {
+      if (ang === 'short') return `${name}\n${price}${miles?` · ${miles}`:''}\n\nAvailable now at ${store}. Serious inquiries welcome — message me for photos, history, or to set up a viewing.\n\n${contact}${link}`;
+      if (ang === 'story') return `Just arrived at ${store} — ${name}.\n\nThere's a reason these don't sit long. ${v.color?`Finished in ${v.color}, `:''}${miles?`showing only ${miles}, `:''}and ready for its next owner today.\n\n${price}\n\nI'd rather show you in person than sell you online. Message me and let's set up a time — no pressure, no games.\n\n${contact}${link}`;
+      return `${name} — ${price}\n\n${specs.length?specs.join('\n')+'\n\n':''}Now available at ${store}. Financing and lease options available, trades welcome, and we handle nationwide delivery.\n\nMessage me directly with any questions or to schedule a viewing.\n\n${contact}${link}`;
+    }
+    if (plat === 'instagram') {
+      const tags = ['#'+(v.make||'luxury').replace(/[^A-Za-z]/g,''), '#'+(v.model||'').replace(/[^A-Za-z0-9]/g,''), '#luxurycars','#exoticcars','#orlando','#fieldsmotorcars'].filter(t=>t.length>2).join(' ');
+      return `${name} ${v.color?`in ${v.color} `:''}— now available.\n\n${price}${miles?` · ${miles}`:''}\n\nDM me for details or to arrange a private viewing.${rep?`\n\n— ${rep}`:''}\n\n${tags}`;
+    }
+    return `Now available at ${store}: ${name}${miles?`, ${miles}`:''} — ${price}.\n\n${specs.length?specs.join(' · ')+'\n\n':''}Financing and lease options available. Trades welcome. Nationwide delivery.\n\nMessage or call ${phone||'me'} to schedule a viewing.\n\n${contact}${link}`;
+  };
+
+  const choose = (v) => { setSel(v); setDraft(build(v, platform, angle)); setCopied(false); };
+  const regen = (plat, ang) => { setPlatform(plat); setAngle(ang); if(sel) setDraft(build(sel, plat, ang)); };
+
+  const btn = (active) => ({padding:"8px 16px",background:active?"rgba(201,168,76,0.26)":"transparent",border:`1px solid ${active?"rgba(201,168,76,0.65)":"var(--w06)"}`,borderRadius:3,color:active?gold:"var(--nav-text)",fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"});
+
+  return (
+    <div>
+      <GLine label="Social Post Writer" />
+      <div style={{fontSize:13,color:"var(--muted)",margin:"12px 0 16px",lineHeight:1.7}}>
+        Pick a vehicle and Jessica drafts the listing copy. <b style={{color:"var(--text)"}}>She never posts anything</b> — you read it, edit it, copy it, and post it yourself.
+      </div>
+
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search your inventory…" style={{width:"100%",padding:"12px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:4,color:"var(--text)",fontSize:14,marginBottom:10}} />
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
+        {shown.length===0 && <div style={{fontSize:12,color:"var(--dim2)"}}>No vehicles found — import inventory or run Jessica's site scan.</div>}
+        {shown.map((v,i)=>(
+          <button key={i} onClick={()=>choose(v)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:sel===v?"rgba(201,168,76,0.12)":"var(--surface)",border:`1px solid ${sel===v?gold:"rgba(201,168,76,0.26)"}`,borderRadius:4,cursor:"pointer",textAlign:"left"}}>
+            {v.photo_url && <img src={v.photo_url} alt="" style={{width:60,height:44,objectFit:"cover",borderRadius:3,flexShrink:0}} onError={e=>{e.currentTarget.style.display='none';}} />}
+            <span style={{flex:1}}>
+              <span style={{display:"block",fontSize:13,color:"var(--text)"}}>{[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')}</span>
+              <span style={{display:"block",fontSize:11,color:"var(--muted)"}}>{[v.mileage?`${Number(v.mileage).toLocaleString()} mi`:null, v.stock_number?`Stock ${v.stock_number}`:null].filter(Boolean).join(' · ')}</span>
+            </span>
+            {v.price && <span style={{fontSize:14,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(v.price).toLocaleString()}</span>}
+          </button>
+        ))}
+      </div>
+
+      {sel && (
+        <div>
+          <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+            {[['marketplace','Marketplace'],['instagram','Instagram'],['general','General']].map(([p,l])=>
+              <button key={p} onClick={()=>regen(p,angle)} style={btn(platform===p)}>{l}</button>)}
+          </div>
+          {platform==='marketplace' && <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+            {[['classic','Straightforward'],['story','Warm / personal'],['short','Short & punchy']].map(([a,l])=>
+              <button key={a} onClick={()=>regen(platform,a)} style={btn(angle===a)}>{l}</button>)}
+          </div>}
+          <textarea value={draft} onChange={e=>{setDraft(e.target.value);setCopied(false);}} rows={14}
+            style={{width:"100%",padding:"14px 16px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:4,color:"var(--text)",fontSize:13.5,lineHeight:1.7,resize:"vertical",fontFamily:"'Jost',sans-serif"}} />
+          <div style={{fontSize:11,color:"var(--dim2)",margin:"8px 0 12px"}}>{draft.length} characters · edit anything above before you post</div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={()=>{navigator.clipboard.writeText(draft);setCopied(true);setTimeout(()=>setCopied(false),2500);}}
+              style={{padding:"12px 24px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>📋 Copy Post</button>
+            <a href="https://www.facebook.com/marketplace/create/vehicle" target="_blank" rel="noopener"
+              style={{padding:"12px 20px",background:"transparent",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted)",fontSize:11,letterSpacing:"0.14em",textTransform:"uppercase",textDecoration:"none"}}>Open Marketplace ↗</a>
+            {sel.photo_url && <a href={sel.photo_url} target="_blank" rel="noopener" style={{fontSize:11,color:gold,textDecoration:"underline"}}>Vehicle photo ↗</a>}
+            {copied && <span style={{fontSize:12,color:"#6ee7b7"}}>✓ Copied — paste it into your listing</span>}
           </div>
         </div>
       )}
@@ -1718,9 +1905,24 @@ function SourcingView({onNewLead}) {
   const load = async () => {
     let local = []; try { local = JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); } catch {}
     const { data: remote } = await sb.from('store_inventory').select('*');
+    // Enrich your own imported inventory with the photo, price and listing link
+    // Jessica scraped from the store website — matched by VIN.
+    const byVin = {};
+    (remote||[]).forEach(v => { const k=(v.vin||'').trim().toUpperCase(); if(k) byVin[k]=v; });
     const localVins = new Set(local.map(v=>(v.vin||'').trim().toUpperCase()).filter(Boolean));
     const merged = [
-      ...local.map(v=>({...v, store: v.store || 'Fields Motorcars Orlando'})),
+      ...local.map(v=>{
+        const scraped = byVin[(v.vin||'').trim().toUpperCase()];
+        return {
+          ...v,
+          store: v.store || scraped?.store || 'Fields Motorcars Orlando',
+          price: v.price || scraped?.price || '',
+          mileage: v.mileage || scraped?.mileage || '',
+          photo_url: v.photo_url || scraped?.photo_url || null,
+          detail_url: v.detail_url || scraped?.detail_url || null,
+          stock_number: v.stock_number || v.stock || scraped?.stock_number || null,
+        };
+      }),
       ...(remote||[]).filter(v=>!localVins.has((v.vin||'').trim().toUpperCase()))
     ];
     invRef.current = merged;
@@ -1827,8 +2029,14 @@ function JessicaAlerts({clients, onSelectClient}) {
     sb.from('store_inventory').select('*').then(({data})=>{ if(data) setGroupInv(data); });
   },[]);
   const inventory = React.useMemo(()=>{
+    const byVin = {};
+    groupInv.forEach(v => { const k=(v.vin||'').trim().toUpperCase(); if(k) byVin[k]=v; });
     const localVins = new Set(localInv.map(v=>(v.vin||'').trim().toUpperCase()).filter(Boolean));
-    return [...localInv, ...groupInv.filter(v=>!localVins.has((v.vin||'').trim().toUpperCase()))];
+    const enriched = localInv.map(v=>{
+      const s = byVin[(v.vin||'').trim().toUpperCase()];
+      return s ? {...v, store:v.store||s.store, price:v.price||s.price, photo_url:v.photo_url||s.photo_url, detail_url:v.detail_url||s.detail_url} : v;
+    });
+    return [...enriched, ...groupInv.filter(v=>!localVins.has((v.vin||'').trim().toUpperCase()))];
   },[localInv, groupInv]);
   const drops = React.useMemo(()=>{
     let local = []; try { const d = JSON.parse(localStorage.getItem('pinnacle_price_drops')||'[]'); const cutoff = Date.now()-14*86400000; local = d.filter(x=>x.at>cutoff); } catch {}
@@ -4790,6 +4998,7 @@ function BulkClientImport({existingClients, onDone}) {
   const [saving, setSaving] = React.useState(false);
   const [report, setReport] = React.useState(null);
   const [error, setError] = React.useState(null);
+  const [pdfBusy, setPdfBusy] = React.useState(null);
   const fileRef = React.useRef(null);
 
   const HEADER_MAP = [
@@ -4807,8 +5016,104 @@ function BulkClientImport({existingClients, onDone}) {
     ['notes', ['notes','comments','remarks']],
   ];
 
+  // ── PDF client lists ──────────────────────────────────────────────
+  // Pull text out of a PDF (with OCR fallback for scans), then rebuild rows.
+  // PDF text has no columns, so we work line by line: a line with a phone or
+  // email is treated as one client, and the name is whatever text leads it.
+  const parsePdfClients = async (file) => {
+    setError(null); setReport(null); setPdfBusy('Reading PDF…');
+    try {
+      const pdfjsLib = window['pdfjs-dist/build/pdf'];
+      if (!pdfjsLib) throw new Error('PDF reader not loaded — refresh the page and try again.');
+      const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+      let lines = [];
+      for (let p=1; p<=Math.min(pdf.numPages, 25); p++) {
+        setPdfBusy(`Reading page ${p} of ${Math.min(pdf.numPages,25)}…`);
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        // group text fragments into visual lines by their y-position
+        const rows = {};
+        tc.items.forEach(it => {
+          const y = Math.round(it.transform[5]);
+          (rows[y] = rows[y] || []).push({x: it.transform[4], s: it.str});
+        });
+        Object.keys(rows).sort((a,b)=>b-a).forEach(y => {
+          const line = rows[y].sort((a,b)=>a.x-b.x).map(r=>r.s).join(' ').replace(/\s+/g,' ').trim();
+          if (line) lines.push(line);
+        });
+      }
+      // Scanned PDF with no text layer → OCR the pages
+      if (lines.join('').replace(/\s/g,'').length < 60) {
+        if (!window.Tesseract) throw new Error('This PDF is a scan and the OCR library did not load — refresh and retry.');
+        lines = [];
+        for (let p=1; p<=Math.min(pdf.numPages, 6); p++) {
+          setPdfBusy(`Scanned PDF — reading page ${p} with OCR…`);
+          const page = await pdf.getPage(p);
+          const viewport = page.getViewport({scale:2});
+          const canvas = document.createElement('canvas');
+          canvas.width=viewport.width; canvas.height=viewport.height;
+          await page.render({canvasContext:canvas.getContext('2d'), viewport}).promise;
+          const r = await window.Tesseract.recognize(canvas.toDataURL('image/png'),'eng',{logger:()=>{}});
+          lines.push(...(r.data.text||'').split('\n').map(l=>l.trim()).filter(Boolean));
+        }
+      }
+      setPdfBusy('Finding clients…');
+
+      const phoneRe = /(\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4})/;
+      const emailRe = /([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/;
+      const zipRe = /\b(\d{5})(?:-\d{4})?\b/;
+      const cszRe = /([A-Za-z][A-Za-z .]{1,24}),\s*([A-Z]{2})\b/;
+      const HEADERISH = /^(name|customer|client|phone|email|address|city|state|zip|vehicle|source|total|page|report|printed)\b/i;
+
+      const out = [];
+      lines.forEach(line => {
+        if (HEADERISH.test(line) || line.length < 6) return;
+        const phone = (line.match(phoneRe)||[])[1];
+        const email = (line.match(emailRe)||[])[1];
+        if (!phone && !email) return;                      // not a client row
+        const row = {stage:'New Lead'};
+        if (phone) row.cell = phone.replace(/\D/g,'').replace(/^1(\d{10})$/,'$1').replace(/(\d{3})(\d{3})(\d{4})$/,'($1) $2-$3');
+        if (email) row.primary_email = email;
+        // name = leading text before the first phone/email/number
+        let head = line.split(phoneRe)[0].split(emailRe)[0];
+        head = head.replace(/\d{1,6}\s+[A-Za-z].*/,'').replace(/[|,;]+/g,' ').replace(/\s+/g,' ').trim();
+        if (head && head.length <= 46) {
+          if (head.includes(',')) { const p=head.split(','); row.last_name=p[0].trim(); row.first_name=(p[1]||'').trim(); }
+          else { const p=head.split(/\s+/).filter(Boolean); row.first_name=p[0]||''; row.last_name=p.slice(1).join(' '); }
+        }
+        const csz = line.match(cszRe);
+        if (csz) { row.city = csz[1].trim(); row.state = csz[2]; }
+        const zip = line.match(zipRe);
+        if (zip && (!row.cell || !row.cell.includes(zip[1]))) row.zip = zip[1];
+        const veh = line.match(/\b((?:19|20)\d{2}\s+[A-Z][A-Za-z\-]+(?:\s+[A-Za-z0-9\-]+){0,3})/);
+        if (veh) row.vehicle_of_interest = veh[1].trim();
+        if (row.first_name || row.primary_email || row.cell) out.push(row);
+      });
+
+      if (out.length === 0) throw new Error("Read the PDF, but couldn't spot any client rows. Each client needs a phone number or email on their line — send me a screenshot of a page and I'll tune it.");
+      dedupeAndSet(out, ['PDF text']);
+    } catch(e) { setError(e.message); }
+    setPdfBusy(null);
+  };
+
+  // Shared: split fresh vs already-in-roster, then show the preview
+  const dedupeAndSet = (parsed, fields) => {
+    const exPhones = new Set((existingClients||[]).map(c=>(c.cell||'').replace(/\D/g,'')).filter(p=>p.length>=10));
+    const exEmails = new Set((existingClients||[]).map(c=>(c.primary_email||'').toLowerCase()).filter(Boolean));
+    const seen = new Set();
+    const fresh=[], dupes=[];
+    parsed.forEach(r=>{
+      const p=(r.cell||'').replace(/\D/g,''); const em=(r.primary_email||'').toLowerCase();
+      const key = p || em || `${r.first_name}|${r.last_name}`.toLowerCase();
+      if (seen.has(key)) return; seen.add(key);
+      if ((p && exPhones.has(p)) || (em && exEmails.has(em))) dupes.push(r); else fresh.push(r);
+    });
+    setRows({fresh, dupes, fields});
+  };
+
   const parseFile = (file) => {
     setError(null); setReport(null);
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return parsePdfClients(file);
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -4841,14 +5146,7 @@ function BulkClientImport({existingClients, onDone}) {
           return row;
         }).filter(r=>r.first_name||r.last_name||r.primary_email||r.cell);
         if (parsed.length===0) throw new Error("Found the file, but couldn't recognize name/phone/email columns. Check the header row.");
-        const exPhones = new Set((existingClients||[]).map(c=>(c.cell||'').replace(/\D/g,'')).filter(p=>p.length>=10));
-        const exEmails = new Set((existingClients||[]).map(c=>(c.primary_email||'').toLowerCase()).filter(Boolean));
-        const fresh=[], dupes=[];
-        parsed.forEach(r=>{
-          const p=(r.cell||'').replace(/\D/g,''); const em=(r.primary_email||'').toLowerCase();
-          if ((p && exPhones.has(p)) || (em && exEmails.has(em))) dupes.push(r); else fresh.push(r);
-        });
-        setRows({fresh, dupes, fields:[...Object.keys(colFor), ...(nameIdx>-1&&!colFor.first_name?['name → first/last']:[])]});
+        dedupeAndSet(parsed, [...Object.keys(colFor), ...(nameIdx>-1&&!colFor.first_name?['name → first/last']:[])]);
       } catch(err){ setError(err.message); }
     };
     reader.readAsArrayBuffer(file);
@@ -4889,9 +5187,9 @@ function BulkClientImport({existingClients, onDone}) {
             onClick={()=>fileRef.current?.click()}
             style={{border:`2px dashed ${dragging?gold:"rgba(201,168,76,0.42)"}`,borderRadius:6,padding:"44px 20px",textAlign:"center",cursor:"pointer",background:dragging?"rgba(201,168,76,0.06)":"transparent",transition:"all 0.15s",marginBottom:14}}>
             <div style={{fontSize:30,marginBottom:10}}>📥</div>
-            <div style={{fontSize:14,color:"var(--text)",marginBottom:6}}>Drop your client list here</div>
-            <div style={{fontSize:12,color:"var(--muted)"}}>Excel (.xlsx) or CSV — or click to browse. Jessica figures out the columns.</div>
-            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])parseFile(e.target.files[0]);e.target.value='';}} />
+            <div style={{fontSize:14,color:"var(--text)",marginBottom:6}}>{pdfBusy || 'Drop your client list here'}</div>
+            <div style={{fontSize:12,color:"var(--muted)"}}>PDF, Excel (.xlsx) or CSV — or click to browse. Jessica figures out the columns.</div>
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0])parseFile(e.target.files[0]);e.target.value='';}} />
           </div>
         )}
 

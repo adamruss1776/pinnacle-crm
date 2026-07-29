@@ -6,4 +6,8 @@ publish = "."
 node_bundler = "esbuild"
 
 [functions."store-scan-daily"]
-schedule = "0 12 * * *"
+schedule = "0 10 * * *"
+
+# Jessica's morning report — 7am ET (11:00 UTC), an hour after the inventory scan
+[functions."morning-report"]
+schedule = "0 11 * * *"
