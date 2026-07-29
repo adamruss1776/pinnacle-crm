@@ -333,6 +333,166 @@ function JessicaAvatar({size=40}) {
   );
 }
 
+// ── DEAL SHEET DECODER — reverse-engineer a worksheet ────────────────
+// Reads an FMO-style worksheet and rebuilds the math: which fees were used,
+// what the taxable base was, and the rate/money-factor the desk actually applied.
+const pmtOf = (P, apr, n) => { const r = apr/100/12; return r === 0 ? P/n : P*r/(1-Math.pow(1+r,-n)); };
+const solveApr = (P, n, target) => { let lo=0, hi=40; for(let i=0;i<120;i++){ const m=(lo+hi)/2; pmtOf(P,m,n) > target ? hi=m : lo=m; } return (lo+hi)/2; };
+
+function parseDealSheet(text) {
+  const t = (text||'').replace(/[|]/g,' ');
+  // Pull the number after a label. `blockedBefore` stops short labels from
+  // matching inside longer ones — "Tax" must not grab "Tire Tax" or "Doc Stamps".
+  const grab = (labels, blockedBefore) => {
+    for (const lab of labels) {
+      const re = new RegExp("([A-Za-z]+)?\\s*" + lab.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + "[^0-9\\-]{0,18}(-?[\\d,]+\\.?\\d*)", "gi");
+      let m;
+      while ((m = re.exec(t)) !== null) {
+        const prev = (m[1]||'').toLowerCase();
+        if (blockedBefore && blockedBefore.includes(prev)) continue;
+        const n = parseFloat(m[2].replace(/,/g,''));
+        if (!isNaN(n)) return n;
+      }
+    }
+    return null;
+  };
+  const abs = (x) => x == null ? null : Math.abs(x);
+  const isLease = /lease\s*payments/i.test(t);
+  const d = {
+    isLease,
+    vin: (t.match(/\b([A-HJ-NPR-Z0-9]{17})\b/)||[])[1] || null,
+    stock: (t.match(/Stock\s*#?\s*[:\s]\s*([A-Z0-9\-]{3,12})/i)||[])[1] || null,
+    vehicle: (t.match(/Vehicle\s*:\s*((?:19|20)\d{2}\s[^\n]{3,44})/i)||[])[1]?.trim() || null,
+    condition: /New\s*\/\s*Used\s*[:\s]*\s*(New|Used)/i.test(t) ? t.match(/New\s*\/\s*Used\s*[:\s]*\s*(New|Used)/i)[1] : null,
+    price: grab(['Market Value Selling Price','Selling Price','Market Value']),
+    discount: abs(grab(['Discount for a Customer We Like','Return Client Appreciation','Discount'])),
+    totalPurchase: grab(['Total Purchase','Adjusted Price']),
+    capReduction: grab(['Cap Cost Reduction']),
+    tradeAllow: grab(['Trade Allowance']),
+    tradeDiff: grab(['Trade Difference']),
+    tradePayoff: grab(['Trade Payoff']),
+    docFee: grab(['Doc Fee']),
+    batteryFee: grab(['Battery Fee']),
+    tireTax: grab(['Tire Tax','Tire Fee']),
+    leaseSurcharge: grab(['Lease Surcharge']),
+    acqFee: grab(['Acquisition Fee','Acq Fee']),
+    tax: grab(['Tax'], ['tire','doc','battery','lease','sales','wheel','stamps','plus','excise']),
+    licenseFee: grab(['License Fee']),
+    docStamps: grab(['Doc Stamps']),
+    netPrice: grab(['Net Price']),
+    balance: grab(['Balance']),
+    amtFinanced: grab(['Amt Financed','Amount Financed']),
+  };
+  // Products (anything priced that isn't a standard line)
+  d.products = [];
+  [['Front PPF',/Front PPF[^0-9]{0,14}([\d,]+\.?\d*)/i],['Full PPF',/Full PPF[^0-9]{0,14}([\d,]+\.?\d*)/i],
+   ['Wheel & Tire',/(?:Wheel\s*\/?\s*Tires?|Tire\s*(?:&|and)\s*Wheel)[^0-9]{0,20}([\d,]+\.?\d*)/i],
+   ['Cilajet',/Cilajet[^0-9]{0,14}([\d,]+\.?\d*)/i]].forEach(([name,re])=>{
+    const m = t.match(re); if (m) { const n=parseFloat(m[1].replace(/,/g,'')); if(!isNaN(n)) d.products.push({name, amount:n}); }
+  });
+  // Payment grid: terms with optional APR, and the payment row values
+  d.terms = [];
+  const termRe = /(\d{2})\s*Months?\s*\/?\s*([\d.]+)?\s*\*?/gi;
+  let m; while ((m = termRe.exec(t)) !== null) d.terms.push({ n: Number(m[1]), apr: m[2] ? Number(m[2]) : null });
+  d.residuals = (t.match(/\b(\d{3},\d{3})\b/g)||[]).map(x=>parseFloat(x.replace(/,/g,'')));
+  // Lease grid: "36 Months 5409 5098 4788 180,180" → payments per down-payment column + residual
+  d.leaseGrid = [];
+  if (isLease) {
+    const downsLine = t.match(/Cash\s*Down\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/i);
+    d.downs = downsLine ? [1,2,3].map(i=>parseFloat(downsLine[i].replace(/,/g,''))) : [];
+    const rowRe = /(\d{2})\s*Months?\s+([\d,]{3,7})\s+(?:Plus\s*Tax\s+)?([\d,]{3,7})\s+(?:Plus\s*Tax\s+)?([\d,]{3,7})\s+(?:Plus\s*Tax\s+)?([\d,]{6,9})/gi;
+    let r; while ((r = rowRe.exec(t)) !== null) {
+      const num = (x)=>parseFloat(String(x).replace(/,/g,''));
+      d.leaseGrid.push({ n: Number(r[1]), payments: [num(r[2]),num(r[3]),num(r[4])], residual: num(r[5]) });
+    }
+  }
+  return d;
+}
+
+function decodeDealSheet(d) {
+  const notes = [], lines = [];
+  const n = (x) => Number(x)||0;
+  const money = (x) => '$'+Number(x||0).toLocaleString(undefined,{maximumFractionDigits:2});
+
+  // Rebuild the balance from its parts and compare to the printed one
+  const fees = n(d.docFee)+n(d.batteryFee)+n(d.tireTax)+n(d.leaseSurcharge)+n(d.acqFee)+n(d.licenseFee)+n(d.docStamps);
+  const productTotal = (d.products||[]).reduce((s,p)=>s+p.amount,0);
+  let built;
+  if (d.isLease) {
+    const adj = d.totalPurchase ?? (n(d.price)-n(d.discount)-n(d.capReduction));
+    built = adj + fees + n(d.tax);
+    lines.push(['Selling price', n(d.price)]);
+    if (d.discount) lines.push(['Discount', -n(d.discount)]);
+    if (d.capReduction) lines.push(['Cap cost reduction', -n(d.capReduction)]);
+    lines.push(['Adjusted cap cost', adj]);
+  } else {
+    const total = d.totalPurchase ?? (n(d.price)-n(d.discount));
+    built = total - n(d.tradeAllow) + fees + n(d.tax) + productTotal + n(d.tradePayoff);
+    lines.push(['Selling price', n(d.price)]);
+    if (d.discount) lines.push(['Discount', -n(d.discount)]);
+    if (d.tradeAllow) lines.push(['Trade allowance', -n(d.tradeAllow)]);
+    if (d.tradePayoff) lines.push(['Trade payoff added back', n(d.tradePayoff)]);
+  }
+  if (d.docFee) lines.push(['Doc fee', n(d.docFee)]);
+  if (d.batteryFee) lines.push(['Battery fee', n(d.batteryFee)]);
+  if (d.tireTax) lines.push(['Tire tax', n(d.tireTax)]);
+  if (d.leaseSurcharge) lines.push(['Lease surcharge', n(d.leaseSurcharge)]);
+  if (d.acqFee) lines.push(['Acquisition fee', n(d.acqFee)]);
+  if (d.tax) lines.push(['Sales tax', n(d.tax)]);
+  if (d.licenseFee) lines.push(['License fee', n(d.licenseFee)]);
+  if (d.docStamps) lines.push(['Doc stamps', n(d.docStamps)]);
+  (d.products||[]).forEach(p=>lines.push([p.name+' (product)', p.amount]));
+
+  const diff = d.balance != null ? built - d.balance : null;
+  if (d.balance != null) {
+    notes.push(Math.abs(diff) < 2
+      ? `✓ Rebuilt balance ${money(built)} matches the printed balance — every line accounted for.`
+      : `⚠ Rebuilt ${money(built)} vs printed ${money(d.balance)} (off by ${money(Math.abs(diff))}) — OCR likely missed a line, check the sheet.`);
+  }
+
+  // Effective tax rate
+  if (d.tax && d.price && !d.isLease) {
+    const base = n(d.price)-n(d.discount)-n(d.tradeAllow)+n(d.docFee)+productTotal;
+    if (base > 0) notes.push(`Tax ran ${(n(d.tax)/base*100).toFixed(2)}% of the taxable base — that's price − discount${d.tradeAllow?' − trade allowance':''} + doc fee${productTotal?' + products':''} = ${money(base)}. ${d.tradeAllow?`The trade knocked ${money(n(d.tradeAllow)*0.06)} off the tax bill — worth saying out loud to the client.`:''}`);
+  }
+  if (d.docStamps && d.balance) notes.push(`Doc stamps ran ${(n(d.docStamps)/n(d.balance)*1000).toFixed(2)} per $1,000 financed.`);
+
+  // Lease reverse-solve: money factor + residual percentage
+  const leaseTerms = [];
+  if (d.isLease && (d.leaseGrid||[]).length && d.balance) {
+    (d.leaseGrid).forEach(row => {
+      const downs = d.downs && d.downs.length ? d.downs : [0];
+      const mfs = row.payments.map((pay,i)=>{
+        const cap = n(d.balance) - n(downs[i] ?? 0);
+        const dep = (cap - row.residual)/row.n;
+        const rent = pay - dep;
+        return rent/(cap + row.residual);
+      }).filter(x=>isFinite(x) && x>0);
+      if (!mfs.length) return;
+      const mf = mfs.reduce((a,b)=>a+b,0)/mfs.length;
+      leaseTerms.push({ n: row.n, residual: row.residual, residualPct: d.price ? row.residual/n(d.price)*100 : null, mf, apr: mf*2400, payments: row.payments });
+    });
+    if (leaseTerms.length) {
+      const avgMf = leaseTerms.reduce((s,x)=>s+x.mf,0)/leaseTerms.length;
+      notes.push(`Money factor works out to about ${avgMf.toFixed(5)} — that's roughly ${(avgMf*2400).toFixed(1)}% APR equivalent. Multiply any money factor by 2400 to see the rate your client is really paying.`);
+      const r36 = leaseTerms.find(x=>x.n===36) || leaseTerms[0];
+      if (r36?.residualPct) notes.push(`Residual on the ${r36.n}-month is ${money(r36.residual)} — ${r36.residualPct.toFixed(1)}% of selling price. Higher residual means lower payment, so this is the lever that matters most on a lease.`);
+      if (d.acqFee) notes.push(`Acquisition fee of ${money(d.acqFee)} was capitalized into the balance rather than collected up front.`);
+    }
+  }
+
+  // Rate reverse-solve
+  const rates = [];
+  if (!d.isLease && d.amtFinanced && d.terms.length) {
+    d.terms.filter(t=>t.n && t.apr).forEach(t=>{
+      const textbook = pmtOf(d.amtFinanced, t.apr, t.n);
+      rates.push({ term:t.n, stated:t.apr, textbook });
+    });
+    if (rates.length) notes.push(`Quoted at ${rates[0].stated}% APR. Textbook payment on ${money(d.amtFinanced)} would be ${money(rates[0].textbook)}/mo at ${rates[0].term} months — desks usually print slightly more because the first payment sits ~45 days out.`);
+  }
+  return { lines, notes, built, diff, rates, fees, productTotal, leaseTerms };
+}
+
 // ── JESSICA COPILOT — command center for Adam ────────────────────────
 function AgentView({clients, onNav}) {
   const [tool, setTool] = React.useState(null); // null | 'briefing' | 'recall' | 'arrivals' | 'drops' | 'sim'
@@ -402,6 +562,8 @@ function AgentView({clients, onNav}) {
 
   const BackBtn = () => <button onClick={()=>setTool(null)} style={{background:"none",border:"none",color:"var(--dim)",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer",marginBottom:18}}>← Back to Jessica</button>;
 
+  if (tool === 'decoder') return (<div style={{maxWidth:700}}><BackBtn /><DealSheetDecoder /></div>);
+
   if (tool === 'sim') return (<div style={{maxWidth:680}}><BackBtn /><LeadSimChat /></div>);
 
   return (
@@ -423,6 +585,7 @@ function AgentView({clients, onNav}) {
           <Card icon="📈" title="Trade Market Check" sub="Work up a trade: decode the VIN, market picture, estimated value." onClick={()=>onNav&&onNav('appraise')} />
           <Card icon="🚗" title="New at the Group" sub="Everything that landed at the five stores in the last 7 days." badge={arrivals7.length} onClick={()=>setTool('arrivals')} />
           <Card icon="📉" title="Price Drops" sub="Group vehicles marked down in the last 14 days — revival fuel." badge={drops14.length} onClick={()=>setTool('drops')} />
+          <Card icon="🧮" title="Deal Sheet Decoder" sub="Drop a worksheet — Jessica rebuilds the math line by line and shows the rate behind it." onClick={()=>setTool('decoder')} />
           <Card icon="💬" title="Lead Simulator" sub="Watch Jessica work an inbound lead — great for training and demos." onClick={()=>setTool('sim')} />
         </div>
       )}
@@ -484,6 +647,166 @@ function AgentView({clients, onNav}) {
           <div style={{marginTop:14}}>
             {drops14.length===0 ? <div style={{fontSize:13,color:"var(--dim2)"}}>No markdowns yet — drops appear after Jessica sees a price change between scans.</div>
               : drops14.map((v,i)=><VehRow key={i} v={v} extra={`dropped ${new Date(v.price_dropped_at).toLocaleDateString()}`} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DealSheetDecoder() {
+  const [settings, saveSettings] = useSettings();
+  const [busy, setBusy] = React.useState(false);
+  const [stage, setStage] = React.useState('');
+  const [parsed, setParsed] = React.useState(null);
+  const [decoded, setDecoded] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const [applied, setApplied] = React.useState(false);
+  const [dragging, setDragging] = React.useState(false);
+  const fileRef = React.useRef(null);
+  const money = (x) => (x<0?'-':'')+'$'+Math.abs(Number(x||0)).toLocaleString(undefined,{maximumFractionDigits:2});
+
+  const run = async (file) => {
+    if (!file) return;
+    setBusy(true); setError(null); setParsed(null); setDecoded(null); setApplied(false);
+    try {
+      let text = '';
+      if (file.type === 'application/pdf') {
+        setStage('Reading PDF…');
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+        for (let p=1; p<=Math.min(pdf.numPages,3); p++) {
+          const page = await pdf.getPage(p);
+          const tc = await page.getTextContent();
+          text += tc.items.map(i=>i.str).join(' ') + '\n';
+        }
+        if (text.replace(/\s/g,'').length < 60 && window.Tesseract) {
+          setStage('Scanned PDF — running OCR…');
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({scale:2.5});
+          const canvas = document.createElement('canvas');
+          canvas.width=viewport.width; canvas.height=viewport.height;
+          await page.render({canvasContext:canvas.getContext('2d'), viewport}).promise;
+          const r = await window.Tesseract.recognize(canvas.toDataURL('image/png'),'eng',{logger:()=>{}});
+          text = r.data.text||'';
+        }
+      } else if (file.type.startsWith('image/')) {
+        setStage('Reading the sheet…');
+        if (!window.Tesseract) throw new Error('OCR library not loaded — refresh the page.');
+        const dataUrl = await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('Could not read that file.'));r.readAsDataURL(file);});
+        const r = await window.Tesseract.recognize(dataUrl,'eng',{logger:()=>{}});
+        text = r.data.text||'';
+      } else throw new Error('Drop a photo or PDF of the worksheet.');
+
+      if (text.replace(/\s/g,'').length < 40) throw new Error("Couldn't read that image — try a straighter, brighter photo.");
+      setStage('Rebuilding the math…');
+      const p = parseDealSheet(text);
+      if (!p.price && !p.balance) throw new Error("Read the file, but couldn't find the money columns. Make sure the whole worksheet is in frame.");
+      setParsed(p); setDecoded(decodeDealSheet(p));
+    } catch(e){ setError(e.message); }
+    setBusy(false); setStage('');
+  };
+
+  const applyDefaults = async () => {
+    const next = {...settings};
+    if (parsed.docFee) next.doc_fee = parsed.docFee;
+    if (parsed.batteryFee) next.battery_fee = parsed.batteryFee;
+    if (parsed.licenseFee) next.license_fee = parsed.licenseFee;
+    if (parsed.tireTax) next.tire_tax = parsed.tireTax;
+    if (parsed.acqFee) next.acq_fee = parsed.acqFee;
+    if (parsed.isLease && parsed.leaseSurcharge) next.lease_surcharge = parsed.leaseSurcharge;
+    const apr = (parsed.terms||[]).find(t=>t.apr)?.apr;
+    if (apr) next.default_apr = apr;
+    await saveSettings(next);
+    setApplied(true);
+  };
+
+  return (
+    <div>
+      <GLine label="Deal Sheet Decoder" />
+      <div style={{fontSize:13,color:"var(--muted)",margin:"12px 0 16px",lineHeight:1.7}}>
+        Drop a worksheet — finance or lease — and Jessica rebuilds it line by line: which fees were charged, what the taxable base was, and the rate behind the payments.
+      </div>
+
+      <div onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)}
+        onDrop={e=>{e.preventDefault();setDragging(false);run(e.dataTransfer.files[0]);}}
+        onClick={()=>fileRef.current?.click()}
+        style={{border:`2px dashed ${dragging?gold:"rgba(201,168,76,0.42)"}`,borderRadius:6,padding:"36px 20px",textAlign:"center",cursor:"pointer",background:dragging?"rgba(201,168,76,0.06)":"transparent",marginBottom:16}}>
+        <div style={{fontSize:28,marginBottom:8}}>🧮</div>
+        <div style={{fontSize:14,color:"var(--text)",marginBottom:4}}>{busy ? stage : 'Drop a deal sheet here'}</div>
+        <div style={{fontSize:12,color:"var(--muted)"}}>Photo or PDF · finance or lease · or click to browse</div>
+        <input ref={fileRef} type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{run(e.target.files[0]);e.target.value='';}} />
+      </div>
+
+      {error && <div style={{padding:"12px 16px",background:"rgba(252,165,165,0.06)",border:"1px solid rgba(252,165,165,0.35)",borderRadius:4,fontSize:13,color:"#fca5a5",marginBottom:14}}>⚠ {error}</div>}
+
+      {parsed && decoded && (
+        <div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
+            <span style={{padding:"5px 12px",background:parsed.isLease?"rgba(147,197,253,0.12)":"rgba(110,231,183,0.12)",border:`1px solid ${parsed.isLease?"rgba(147,197,253,0.5)":"rgba(110,231,183,0.5)"}`,borderRadius:20,fontSize:11,color:parsed.isLease?"#93c5fd":"#6ee7b7",letterSpacing:"0.1em",textTransform:"uppercase"}}>{parsed.isLease?'Lease':'Finance'}</span>
+            {parsed.condition && <span style={{fontSize:12,color:"var(--muted)"}}>{parsed.condition}</span>}
+            {parsed.vehicle && <span style={{fontSize:14,color:"var(--text)"}}>{parsed.vehicle}</span>}
+            {parsed.stock && <span style={{fontSize:11,color:"var(--dim2)"}}>Stock {parsed.stock}</span>}
+          </div>
+
+          <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:4,padding:"16px 18px",marginBottom:14}}>
+            <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:12}}>How they got there</div>
+            {decoded.lines.map(([label,val],i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid var(--w05)",fontSize:13}}>
+                <span style={{color:"var(--muted)"}}>{label}</span>
+                <span style={{color:val<0?"#6ee7b7":"var(--text)",fontFamily:"monospace"}}>{money(val)}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0 0",fontSize:15}}>
+              <span style={{color:gold,letterSpacing:"0.1em",textTransform:"uppercase",fontSize:11,alignSelf:"center"}}>Balance</span>
+              <span style={{color:gold,fontFamily:"'Cormorant Garamond',serif",fontSize:20}}>{money(parsed.balance ?? decoded.built)}</span>
+            </div>
+          </div>
+
+          {decoded.notes.length>0 && (
+            <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:4,padding:"16px 18px",marginBottom:14}}>
+              <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:10}}>What Jessica noticed</div>
+              {decoded.notes.map((n,i)=><div key={i} style={{fontSize:12.5,color:"var(--muted)",lineHeight:1.7,marginBottom:6}}>{n}</div>)}
+            </div>
+          )}
+
+          {(decoded.leaseTerms||[]).length>0 && (
+            <div style={{background:"var(--surface)",border:"1px solid rgba(147,197,253,0.35)",borderRadius:4,padding:"16px 18px",marginBottom:14}}>
+              <div style={{fontSize:10,letterSpacing:"0.3em",color:"#93c5fd",textTransform:"uppercase",marginBottom:12}}>Lease terms decoded</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:"8px 14px",fontSize:12}}>
+                <div style={{color:"var(--dim2)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase"}}>Term</div>
+                <div style={{color:"var(--dim2)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",textAlign:"right"}}>Residual</div>
+                <div style={{color:"var(--dim2)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",textAlign:"right"}}>Money Factor</div>
+                <div style={{color:"var(--dim2)",fontSize:10,letterSpacing:"0.15em",textTransform:"uppercase",textAlign:"right"}}>≈ APR</div>
+                {decoded.leaseTerms.map((t,i)=>(<React.Fragment key={i}>
+                  <div style={{color:"var(--text)"}}>{t.n} months</div>
+                  <div style={{textAlign:"right",color:"var(--muted)",fontFamily:"monospace"}}>{money(t.residual)}{t.residualPct?` · ${t.residualPct.toFixed(1)}%`:''}</div>
+                  <div style={{textAlign:"right",color:gold,fontFamily:"monospace"}}>{t.mf.toFixed(5)}</div>
+                  <div style={{textAlign:"right",color:"var(--muted)",fontFamily:"monospace"}}>{t.apr.toFixed(1)}%</div>
+                </React.Fragment>))}
+              </div>
+            </div>
+          )}
+
+          {parsed.terms.filter(t=>t.apr).length>0 && (
+            <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:4,padding:"16px 18px",marginBottom:14}}>
+              <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:10}}>Terms quoted</div>
+              {parsed.terms.filter(t=>t.apr).map((t,i)=>(
+                <div key={i} style={{fontSize:13,color:"var(--muted)",marginBottom:4}}>{t.n} months at <b style={{color:gold}}>{t.apr}%</b> APR{parsed.amtFinanced?` · payment on ${money(parsed.amtFinanced)} ≈ ${money(pmtOf(parsed.amtFinanced,t.apr,t.n))}/mo`:''}</div>
+              ))}
+            </div>
+          )}
+
+          {(parsed.products||[]).length>0 && (
+            <div style={{background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:4,padding:"16px 18px",marginBottom:14}}>
+              <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:10}}>Products on this deal — {money(decoded.productTotal)}</div>
+              {parsed.products.map((p,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"var(--muted)",marginBottom:4}}><span>{p.name}</span><span style={{fontFamily:"monospace"}}>{money(p.amount)}</span></div>)}
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={applyDefaults} style={{padding:"12px 24px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>Apply Fees to Quick Quote</button>
+            {applied && <span style={{fontSize:12,color:"#6ee7b7"}}>✓ Saved — your Deal Desk now defaults to this store's fees</span>}
           </div>
         </div>
       )}
