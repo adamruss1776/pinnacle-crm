@@ -103,9 +103,10 @@ exports.handler = async (event) => {
   const sendTo = qs.to || REPORT_TO;
   const sendFrom = qs.from || undefined;
   const now = Date.now();
-  const [inv, clients] = await Promise.all([
+  const [inv, clients, owned] = await Promise.all([
     sb("store_inventory?select=*"),
-    sb("clients?select=id,first_name,last_name,vehicle_of_interest,stage,cell,updated_at,created_at"),
+    sb("clients?select=id,first_name,last_name,vehicle_of_interest,stage,cell,birthday,updated_at,created_at"),
+    sb("owned_vehicles?select=*"),
   ]);
 
   const arrivals = inv.filter(v => v.first_seen && Date.parse(v.first_seen) > now - 36 * 3600000);
@@ -122,6 +123,36 @@ exports.handler = async (event) => {
   matches.sort((a, b) => b.s - a.s);
 
   const cold = active.filter(c => Math.floor((now - Date.parse(c.updated_at || c.created_at)) / 86400000) >= 5);
+
+  // Owner outreach — anniversaries, birthdays, trade windows, open recalls
+  const daysUntilAnnual = (s) => {
+    if (!s) return null;
+    const d = new Date(String(s).length <= 10 ? s + "T12:00:00" : s);
+    if (isNaN(d)) return null;
+    const t = new Date(); t.setHours(0,0,0,0);
+    const next = new Date(t.getFullYear(), d.getMonth(), d.getDate());
+    if (next < t) next.setFullYear(next.getFullYear() + 1);
+    return Math.round((next - t) / 86400000);
+  };
+  const CYCLE = { lamborghini:24, ferrari:24, mclaren:24, "rolls-royce":30, bentley:30, porsche:33, "mercedes-benz":33, bmw:33 };
+  const ownedBy = {};
+  owned.forEach(v => { (ownedBy[v.client_id] = ownedBy[v.client_id] || []).push(v); });
+  const outreach = [];
+  clients.forEach(c => {
+    (ownedBy[c.id] || []).forEach(v => {
+      const vn = [v.year, v.make, v.model, v.trim].filter(Boolean).join(" ");
+      const da = daysUntilAnnual(v.delivered_on);
+      if (da !== null && da <= 7) outreach.push({ c, kind: "🎉", note: da === 0 ? `Delivery anniversary today — ${vn}` : `Delivery anniversary in ${da}d — ${vn}` });
+      if (v.recall_count > 0) outreach.push({ c, kind: "⚠", note: `${v.recall_count} open recall${v.recall_count !== 1 ? "s" : ""} — ${vn}` });
+      if (v.delivered_on) {
+        const mo = Math.floor((now - Date.parse(v.delivered_on)) / (86400000 * 30.44));
+        const cyc = CYCLE[(v.make || "").toLowerCase()] || 36;
+        if (mo >= cyc - 4 && mo <= cyc + 8) outreach.push({ c, kind: "🔄", note: `${mo} months in the ${vn} — trade window` });
+      }
+    });
+    const db = daysUntilAnnual(c.birthday);
+    if (db !== null && db <= 7) outreach.push({ c, kind: "🎂", note: db === 0 ? "Birthday today" : `Birthday in ${db} days` });
+  });
 
   // News
   const all = (await Promise.all(FEEDS.map(fetchFeed))).flat();
@@ -157,7 +188,7 @@ exports.handler = async (event) => {
 
     <tr><td style="padding:18px 0 0">
       <table width="100%"><tr>
-        ${[["New Arrivals", arrivals.length, "#1f8a52"], ["Price Drops (7d)", drops.length, "#a16207"], ["Client Matches", matches.length, "#8f6b10"], ["Going Cold", cold.length, "#b91c1c"]]
+        ${[["New Arrivals", arrivals.length, "#1f8a52"], ["Price Drops (7d)", drops.length, "#a16207"], ["Client Matches", matches.length, "#8f6b10"], ["Owner Calls", outreach.length, "#1d4ed8"], ["Going Cold", cold.length, "#b91c1c"]]
           .map(([l, v, c]) => `<td align="center" style="padding:10px;background:#faf8f4;border-radius:5px">
             <div style="font-size:26px;color:${c};font-weight:600">${v}</div>
             <div style="font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px">${l}</div></td>`).join('<td width="8"></td>')}
@@ -176,6 +207,11 @@ exports.handler = async (event) => {
 
     ${arrivals.length ? section("New Arrivals — Last 36 Hours", "#1f8a52",
       `<table width="100%">${arrivals.slice(0, 10).map(v => vehicleCard(v)).join("")}</table>`) : ""}
+
+    ${outreach.length ? section("Owner Outreach — reasons to call today", "#1d4ed8",
+      `<table width="100%">${outreach.slice(0, 10).map(o => `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#333">
+        <span style="font-size:15px">${o.kind}</span> <b>${esc(o.c.first_name || "")} ${esc(o.c.last_name || "")}</b>
+        <span style="color:#777"> — ${esc(o.note)}</span>${o.c.cell ? `<span style="color:#999;font-size:11px"> · ${esc(o.c.cell)}</span>` : ""}</td></tr>`).join("")}</table>`) : ""}
 
     ${cold.length ? section("Going Cold — no contact in 5+ days", "#b91c1c",
       `<table width="100%">${cold.slice(0, 8).map(c => `<tr><td style="padding:7px 0;border-bottom:1px solid #eee;font-size:13px;color:#333">
@@ -207,7 +243,7 @@ exports.handler = async (event) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       sentTo: sendTo, subject,
-      counts: { arrivals: arrivals.length, drops: drops.length, homeDrops: homeDrops.length, matches: matches.length, cold: cold.length },
+      counts: { arrivals: arrivals.length, drops: drops.length, homeDrops: homeDrops.length, matches: matches.length, cold: cold.length, outreach: outreach.length },
       news: { luxury: luxNews.length, used: mktNews.length, ai: aiNews.length, feedsReturned: uniq.length },
       sendResult: sendResult.slice(0, 200),
     }),
