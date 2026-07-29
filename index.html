@@ -494,7 +494,9 @@ function decodeDealSheet(d) {
 }
 
 // ── JESSICA COPILOT — command center for Adam ────────────────────────
-function AgentView({clients, onNav}) {
+function AgentView({clients, onNav, onSelectClient}) {
+  const [settings] = useSettings();
+  const [quote, setQuote] = React.useState(null);
   const [tool, setTool] = React.useState(null); // null | 'briefing' | 'recall' | 'arrivals' | 'drops' | 'sim'
   const [groupInv, setGroupInv] = React.useState([]);
   React.useEffect(()=>{ sb.from('store_inventory').select('*').then(({data})=>{ if(data) setGroupInv(data); }); },[]);
@@ -565,12 +567,25 @@ function AgentView({clients, onNav}) {
   if (tool === 'decoder') return (<div style={{maxWidth:700}}><BackBtn /><DealSheetDecoder /></div>);
   if (tool === 'reconcile') return (<div style={{maxWidth:700}}><BackBtn /><InventoryReconcile /></div>);
   if (tool === 'owners') return (<div style={{maxWidth:700}}><BackBtn /><OwnerOutreach clients={clients} onSelectClient={onSelectClient} /></div>);
+  if (tool === 'equity') return (<div style={{maxWidth:700}}><BackBtn />
+    <EquityRadar clients={clients} onSelectClient={onSelectClient} onQuote={(c,pick,owned,eq)=>setQuote({client:c, initial:{
+      vehicle:[pick.year,pick.make,pick.model,pick.trim].filter(Boolean).join(' '),
+      price: pick.price||'', discount:'', tradeAllow: eq.value||'', payoff: eq.payoff||'',
+      docFee: settings.doc_fee ?? 1295, batteryFee: settings.battery_fee ?? 1.5, licenseFee: settings.license_fee ?? 450,
+      county: countyFromZip(c?.zip)||'', mode:'finance',
+      terms:[{n:36,apr:settings.default_apr??8.24},{n:48,apr:settings.default_apr??8.24},{n:60,apr:settings.default_apr??8.24}],
+      downs:[10000,20000,30000],
+      acqFee:1495, leaseSurcharge:60, capReduction:'', moneyFactor:0.00450, annualMileage:10000,
+      leaseTerms:[{n:24,res:58,mf:0.00474},{n:36,res:51,mf:0.00452},{n:39,res:51,mf:0.00448}],
+      stock: pick.stock_number||'', vin: pick.vin||'', color: pick.color||'', condition: (pick.condition||'').toLowerCase()==='new'?'New':'Used', mileage: pick.mileage||'',
+    }})} /></div>);
   if (tool === 'social') return (<div style={{maxWidth:700}}><BackBtn /><SocialPostWriter /></div>);
 
   if (tool === 'sim') return (<div style={{maxWidth:680}}><BackBtn /><LeadSimChat /></div>);
 
   return (
     <div style={{maxWidth:760,paddingBottom:60}}>
+      {quote && <DealDesk client={quote.client} initial={quote.initial} onClose={()=>setQuote(null)} />}
       <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:24}}>
         <JessicaAvatar size={56} />
         <div>
@@ -590,6 +605,7 @@ function AgentView({clients, onNav}) {
           <Card icon="📉" title="Price Drops" sub="Group vehicles marked down in the last 14 days — revival fuel." badge={drops14.length} onClick={()=>setTool('drops')} />
           <Card icon="🧮" title="Deal Sheet Decoder" sub="Drop a worksheet — Jessica rebuilds the math line by line and shows the rate behind it." onClick={()=>setTool('decoder')} />
           <Card icon="🤝" title="Owner Outreach" sub="Past clients worth a call — anniversaries, birthdays, trade timing, open recalls." onClick={()=>setTool('owners')} />
+          <Card icon="💰" title="Equity Radar" sub="Who's worth more than they owe — with an upgrade suggestion and a one-tap quote." onClick={()=>setTool('equity')} />
           <Card icon="📣" title="Social Post Writer" sub="Pick a car, Jessica writes the Marketplace listing. You approve and post it." onClick={()=>setTool('social')} />
           <Card icon="🧹" title="Inventory Reconcile" sub="Find cars still in Pinnacle that have come off the store website." onClick={()=>setTool('reconcile')} />
           <Card icon="💬" title="Lead Simulator" sub="Watch Jessica work an inbound lead — great for training and demos." onClick={()=>setTool('sim')} />
@@ -656,6 +672,99 @@ function AgentView({clients, onNav}) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── EQUITY RADAR — who's sitting on equity, and what to move them into ──
+function EquityRadar({clients, onSelectClient, onQuote}) {
+  const [settings] = useSettings();
+  const [owned, setOwned] = React.useState([]);
+  const [inv, setInv] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(()=>{ (async()=>{
+    const [{data:ov}, {data:si}] = await Promise.all([
+      sb.from('owned_vehicles').select('*'),
+      sb.from('store_inventory').select('*'),
+    ]);
+    let local=[]; try{ local=JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); }catch{}
+    const vins=new Set(local.map(v=>(v.vin||'').trim().toUpperCase()).filter(Boolean));
+    setOwned(ov||[]); setInv([...local, ...(si||[]).filter(v=>!vins.has((v.vin||'').trim().toUpperCase()))]); setLoading(false);
+  })(); },[]);
+
+  const rows = React.useMemo(()=>{
+    const byId = Object.fromEntries((clients||[]).map(c=>[c.id,c]));
+    return (owned||[]).map(v=>({v, c:byId[v.client_id], eq:equityOf(v)}))
+      .filter(x=>x.c && x.eq && x.eq.equity > 0)
+      .sort((a,b)=>b.eq.equity-a.eq.equity);
+  },[owned, clients]);
+
+  // Suggest an upgrade: same marque, newer, priced within reach of their equity + roughly what they're in now
+  const suggest = (v, eq) => {
+    const mk=(v.make||'').toLowerCase(); const yr=Number(v.year)||0;
+    const pool = inv.filter(x => Number(x.price)>0 && (Number(x.year)||0) >= yr && (x.make||'').toLowerCase()===mk);
+    const sameModel = pool.filter(x=>(x.model||'').toLowerCase().includes((v.model||'').toLowerCase().split(' ')[0]));
+    const ranked = [...(sameModel.length?sameModel:pool)]
+      .map(x=>({x, gap: Math.abs(Number(x.price) - (eq.value + eq.equity*0.5))}))
+      .sort((a,b)=>a.gap-b.gap);
+    return ranked.slice(0,2).map(r=>r.x);
+  };
+
+  return (
+    <div>
+      <GLine label="Equity Radar" />
+      <div style={{fontSize:13,color:"var(--muted)",margin:"12px 0 16px",lineHeight:1.7}}>
+        Clients whose car is worth more than they owe — the easiest upgrade conversations you'll have. Add a value under <b style={{color:"var(--text)"}}>Vehicles Owned</b> on any client to bring them into this list.
+      </div>
+      {loading ? <div style={{fontSize:12,color:"var(--dim2)"}}>Loading…</div>
+        : rows.length===0
+        ? <div style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:4,fontSize:13,color:"var(--muted)",lineHeight:1.7}}>
+            Nobody on the radar yet. Open a past client, add the car they own, tap <b style={{color:"var(--text)"}}>$ Equity</b> and enter a value and payoff — they'll show up here the moment there's positive equity.
+          </div>
+        : rows.map(({v,c,eq},i)=>{
+          const picks = suggest(v, eq);
+          const vehName=[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ');
+          const body = `Hi ${c.first_name||''}, quick note — the market's been strong on your ${vehName} and you're sitting on roughly $${Math.round(eq.equity).toLocaleString()} of equity right now.${picks[0]?` I've got a ${[picks[0].year,picks[0].make,picks[0].model,picks[0].trim].filter(Boolean).join(' ')} that could work beautifully.`:''} Want me to run the numbers and see what it'd look like? No obligation at all.${settings.rep_name?` — ${settings.rep_name}`:''}`;
+          return (
+            <div key={i} style={{padding:"14px 16px",background:"var(--surface)",border:"1px solid rgba(110,231,183,0.35)",borderRadius:4,marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:190}}>
+                  <div style={{fontSize:14,color:"var(--text)"}}>
+                    <span onClick={()=>onSelectClient&&onSelectClient(c)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(201,168,76,0.45)"}}>{c.first_name} {c.last_name}</span>
+                  </div>
+                  <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>{vehName}</div>
+                  <div style={{fontSize:11,color:"var(--dim2)",marginTop:2}}>
+                    ${eq.value.toLocaleString()} value{eq.hasPayoff?` − $${eq.payoff.toLocaleString()} owed`:''}{v.purchase_price?` · paid $${Number(v.purchase_price).toLocaleString()}`:''}
+                  </div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:19,color:"#6ee7b7",fontFamily:"'Cormorant Garamond',serif"}}>${Math.round(eq.equity).toLocaleString()}</div>
+                  <div style={{fontSize:9,color:"var(--dim2)",letterSpacing:"0.15em",textTransform:"uppercase"}}>equity</div>
+                </div>
+              </div>
+              {picks.length>0 && (
+                <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid rgba(201,168,76,0.18)"}}>
+                  <div style={{fontSize:9.5,letterSpacing:"0.2em",color:gold,textTransform:"uppercase",marginBottom:6}}>Jessica suggests</div>
+                  {picks.map((p,j)=>(
+                    <div key={j} style={{display:"flex",alignItems:"center",gap:10,marginBottom:5,flexWrap:"wrap"}}>
+                      {p.photo_url && <img src={p.photo_url} alt="" style={{width:52,height:38,objectFit:"cover",borderRadius:3}} onError={e=>{e.currentTarget.style.display='none';}} />}
+                      <span style={{flex:1,minWidth:140,fontSize:12.5,color:"var(--text)"}}>{[p.year,p.make,p.model,p.trim].filter(Boolean).join(' ')}
+                        <span style={{color:"var(--muted)",fontSize:11}}>{p.store?` · ${p.store}`:''}</span></span>
+                      {p.price && <span style={{fontSize:13,color:gold,fontFamily:"'Cormorant Garamond',serif"}}>${Number(p.price).toLocaleString()}</span>}
+                      <button onClick={()=>onQuote&&onQuote(c, p, v, eq)} style={{padding:"6px 12px",background:"rgba(201,168,76,0.2)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:9.5,letterSpacing:"0.12em",textTransform:"uppercase",cursor:"pointer"}}>Quote It</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{marginTop:10}}>
+                {c.cell && !c.do_not_text
+                  ? <a href={smsHref(c.cell, body)} style={{padding:"8px 16px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.6)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",textDecoration:"none"}}>💬 Text About Equity</a>
+                  : <span style={{fontSize:10,color:"var(--dim2)"}}>{!c.cell?'no cell on file':'marked do not text'}</span>}
+              </div>
+            </div>
+          );
+        })}
     </div>
   );
 }
@@ -1752,21 +1861,70 @@ function ownerSignals(client, vehicles) {
   return out.sort((a,b)=>a.urgency-b.urgency);
 }
 
+// ── EQUITY ──────────────────────────────────────────────────────────
+// Equity = what it's worth today − what they still owe.
+const equityOf = (v) => {
+  const val = Number(v?.estimated_value)||0, owe = Number(v?.payoff)||0;
+  if (!val) return null;
+  return { equity: val - owe, value: val, payoff: owe, hasPayoff: v.payoff != null && v.payoff !== '' };
+};
+// Retail asking comps pulled from the six group stores — same marque, ±2 model years.
+// This is what sister stores are ASKING, which sits above trade value. A sanity check, not a book number.
+const compsFor = (v, inventory) => {
+  if (!v?.make || !v?.model) return null;
+  const mk = v.make.toLowerCase(), md = v.model.toLowerCase();
+  const yr = Number(v.year)||0;
+  const hits = (inventory||[]).filter(x =>
+    (x.make||'').toLowerCase() === mk &&
+    (x.model||'').toLowerCase().includes(md.split(' ')[0]) &&
+    (!yr || Math.abs((Number(x.year)||0) - yr) <= 2) &&
+    Number(x.price) > 0
+  );
+  if (hits.length < 2) return null;
+  const prices = hits.map(x=>Number(x.price)).sort((a,b)=>a-b);
+  const mid = Math.floor(prices.length/2);
+  return {
+    n: prices.length,
+    low: prices[0], high: prices[prices.length-1],
+    median: prices.length%2 ? prices[mid] : Math.round((prices[mid-1]+prices[mid])/2),
+  };
+};
+
 // ── VEHICLES OWNED (client detail) ──────────────────────────────────
 function OwnedVehicles({client}) {
   const [settings] = useSettings();
   const [rows, setRows] = React.useState([]);
   const [adding, setAdding] = React.useState(false);
-  const [f, setF] = React.useState({vin:'',year:'',make:'',model:'',trim:'',color:'',mileage:'',delivered_on:'',purchased_from:'',notes:''});
+  const [f, setF] = React.useState({vin:'',year:'',make:'',model:'',trim:'',color:'',mileage:'',delivered_on:'',purchased_from:'',notes:'',purchase_price:'',payoff:'',estimated_value:''});
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState(null);
   const [confirmDel, setConfirmDel] = React.useState(null);
+  const [groupInv, setGroupInv] = React.useState([]);
+  const [editVal, setEditVal] = React.useState(null);   // row id being valued
+  const [valForm, setValForm] = React.useState({estimated_value:'',payoff:'',purchase_price:''});
 
   const load = async () => {
     const { data } = await sb.from('owned_vehicles').select('*').eq('client_id', client.id).order('delivered_on',{ascending:false});
     setRows(data||[]);
   };
   React.useEffect(()=>{ if(client?.id) load(); }, [client?.id]);
+  React.useEffect(()=>{ sb.from('store_inventory').select('year,make,model,trim,price').then(({data})=>setGroupInv(data||[])); },[]);
+
+  const openValue = (row) => {
+    setEditVal(row.id);
+    setValForm({estimated_value: row.estimated_value ?? '', payoff: row.payoff ?? '', purchase_price: row.purchase_price ?? ''});
+  };
+  const saveValue = async (row) => {
+    setBusy(true);
+    const patch = {
+      estimated_value: valForm.estimated_value === '' ? null : Number(String(valForm.estimated_value).replace(/[^0-9.]/g,'')),
+      payoff:          valForm.payoff === '' ? null : Number(String(valForm.payoff).replace(/[^0-9.]/g,'')),
+      purchase_price:  valForm.purchase_price === '' ? null : Number(String(valForm.purchase_price).replace(/[^0-9.]/g,'')),
+      value_updated_at: new Date().toISOString(), value_source: 'manual',
+    };
+    await sb.from('owned_vehicles').update(patch).eq('id', row.id);
+    setEditVal(null); setBusy(false); await load();
+  };
 
   const decode = async (vinArg) => {
     const vin = (vinArg || f.vin || '').trim().toUpperCase();
@@ -1846,8 +2004,22 @@ function OwnedVehicles({client}) {
                   {v.recall_count>0?`⚠ ${v.recall_count} open recall${v.recall_count!==1?'s':''}`:'✓ No open recalls'} · checked {new Date(v.recall_checked_at).toLocaleDateString()}
                 </div>}
                 {v.notes && <div style={{fontSize:11.5,color:"var(--muted)",marginTop:4,fontStyle:"italic"}}>{v.notes}</div>}
+                {(()=>{ const eq = equityOf(v); if(!eq) return null;
+                  const pos = eq.equity > 0;
+                  return (
+                    <div style={{marginTop:7,padding:"7px 10px",background:pos?"rgba(110,231,183,0.07)":"rgba(252,165,165,0.06)",border:`1px solid ${pos?"rgba(110,231,183,0.35)":"rgba(252,165,165,0.3)"}`,borderRadius:3,display:"inline-block"}}>
+                      <span style={{fontSize:12,color:pos?"#6ee7b7":"#fca5a5",fontWeight:600}}>
+                        {pos?'▲':'▼'} {pos?'Positive':'Negative'} equity ${Math.abs(eq.equity).toLocaleString()}
+                      </span>
+                      <span style={{fontSize:10.5,color:"var(--muted)",marginLeft:8}}>
+                        ${eq.value.toLocaleString()} value{eq.hasPayoff?` − $${eq.payoff.toLocaleString()} owed`:' · no payoff entered'}
+                        {v.purchase_price?` · paid $${Number(v.purchase_price).toLocaleString()}`:''}
+                      </span>
+                    </div>
+                  );})()}
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button onClick={()=>openValue(v)} style={{padding:"6px 12px",background:"rgba(201,168,76,0.16)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer"}}>$ Equity</button>
                 {v.vin && <button onClick={()=>checkRecalls(v)} disabled={busy} style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer"}}>Recalls</button>}
                 {v.vin && <a href={carfaxUrl(v.vin)} target="_blank" rel="noopener" style={{padding:"6px 12px",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",textDecoration:"none"}}>Carfax</a>}
                 {confirmDel===v.id
@@ -1855,6 +2027,30 @@ function OwnedVehicles({client}) {
                   : <button onClick={()=>setConfirmDel(v.id)} style={{padding:"6px 10px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--dim2)",fontSize:10,cursor:"pointer"}}>✕</button>}
               </div>
             </div>
+
+            {editVal===v.id && (()=>{ const c = compsFor(v, groupInv); return (
+              <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(201,168,76,0.22)"}}>
+                {c ? (
+                  <div style={{padding:"10px 12px",background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.3)",borderRadius:3,marginBottom:12}}>
+                    <div style={{fontSize:10,letterSpacing:"0.2em",color:gold,textTransform:"uppercase",marginBottom:5}}>Group retail comps — {c.n} similar</div>
+                    <div style={{fontSize:13,color:"var(--text)"}}>${c.low.toLocaleString()} — ${c.high.toLocaleString()} <span style={{color:"var(--muted)",fontSize:12}}>· median ${c.median.toLocaleString()}</span></div>
+                    <div style={{fontSize:10.5,color:"var(--dim2)",marginTop:4,lineHeight:1.5}}>What our stores are <b>asking</b> for {v.year} ±2 {v.make} {v.model}. Trade value sits below retail — use this as a sanity check next to your vAuto number.</div>
+                  </div>
+                ) : <div style={{fontSize:11.5,color:"var(--dim2)",marginBottom:12}}>No comparable group inventory to compare against — pull the value from vAuto.</div>}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:10}}>
+                  <div><span style={lbl2}>Value Today</span><input value={valForm.estimated_value} onChange={e=>setValForm(p=>({...p,estimated_value:e.target.value}))} placeholder="from vAuto" style={inp2} /></div>
+                  <div><span style={lbl2}>Payoff / Owed</span><input value={valForm.payoff} onChange={e=>setValForm(p=>({...p,payoff:e.target.value}))} placeholder="0 if owned outright" style={inp2} /></div>
+                  <div><span style={lbl2}>What They Paid</span><input value={valForm.purchase_price} onChange={e=>setValForm(p=>({...p,purchase_price:e.target.value}))} placeholder="optional" style={inp2} /></div>
+                </div>
+                {(() => { const val=Number(String(valForm.estimated_value).replace(/[^0-9.]/g,''))||0, owe=Number(String(valForm.payoff).replace(/[^0-9.]/g,''))||0;
+                  if(!val) return null; const eq=val-owe;
+                  return <div style={{fontSize:13,color:eq>0?"#6ee7b7":"#fca5a5",marginBottom:10}}>{eq>0?'▲':'▼'} {eq>0?'Positive':'Negative'} equity of ${Math.abs(eq).toLocaleString()}</div>; })()}
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>saveValue(v)} disabled={busy} style={{padding:"10px 20px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>{busy?'Saving…':'Save'}</button>
+                  <button onClick={()=>setEditVal(null)} style={{padding:"10px 16px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.14em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+                </div>
+              </div>
+            );})()}
           </div>
         ))}
 
@@ -5702,6 +5898,38 @@ function DealDesk({client, initial, onClose, onSaved}) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
 
+  // VIN → fills the quote from inventory (yours or any group store), NHTSA as backup
+  const [vinLookup, setVinLookup] = useState('');
+  const [vinMsg, setVinMsg] = useState(null);
+  const [groupInv, setGroupInv] = useState([]);
+  useEffect(()=>{ sb.from('store_inventory').select('*').then(({data})=>setGroupInv(data||[])); },[]);
+  const pullByVin = async () => {
+    const q = vinLookup.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if (q.length < 6) { setVinMsg('Enter at least the last 6 of the VIN.'); return; }
+    const pool = [...inventory, ...groupInv];
+    const hit = pool.find(v=>(v.vin||'').trim().toUpperCase()===q) || pool.find(v=>(v.vin||'').trim().toUpperCase().endsWith(q));
+    if (hit) {
+      setF(p=>({...p,
+        vehicle:[hit.year,hit.make,hit.model,hit.trim].filter(Boolean).join(' '),
+        price: hit.price||p.price, vin: (hit.vin||q), stock: hit.stock_number||hit.stock||p.stock,
+        color: hit.color||p.color, mileage: hit.mileage||p.mileage,
+        condition: (hit.condition||'').toLowerCase()==='new' ? 'New' : (hit.condition?'Used':p.condition),
+      }));
+      setVinMsg(`✓ Pulled from ${hit.store||'your inventory'}${hit.price?` — $${Number(hit.price).toLocaleString()}`:''}`);
+      return;
+    }
+    if (q.length === 17) {
+      try {
+        const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${q}?format=json`);
+        const d = await res.json();
+        const get = k => d.Results?.find(r=>r.Variable===k)?.Value||'';
+        const nm = [get('Model Year'),get('Make'),get('Model'),get('Trim')||get('Series')].filter(Boolean).join(' ');
+        if (nm.trim()) { setF(p=>({...p, vehicle:nm, vin:q})); setVinMsg('✓ Decoded from the VIN database — not in inventory, so add the price.'); return; }
+      } catch {}
+    }
+    setVinMsg('⚠ No match in your inventory or the group stores.');
+  };
+
   // FL tax: trade allowance reduces the taxable base; doc fee is taxable; battery & license are not.
   const taxBase = num(f.price) - num(f.discount) - num(f.tradeAllow) + num(f.docFee);
   const tax = flVehicleTax(taxBase, f.county);
@@ -5827,6 +6055,13 @@ function DealDesk({client, initial, onClose, onSaved}) {
       {/* QUOTE VALUES */}
       <div style={{flex:"1 1 300px",minWidth:290,background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:"18px 20px"}}>
         <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:14}}>Quote Values</div>
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          <input value={vinLookup} onChange={e=>setVinLookup(e.target.value.toUpperCase())} maxLength={17} placeholder="VIN or last 8 — pulls from inventory"
+            onKeyDown={e=>{if(e.key==='Enter')pullByVin();}}
+            style={{flex:1,minWidth:0,padding:"9px 11px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:3,color:"var(--text)",fontSize:12,fontFamily:"monospace"}} />
+          <button onClick={pullByVin} style={{padding:"9px 14px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>Pull ✦</button>
+        </div>
+        {vinMsg && <div style={{fontSize:11,color:vinMsg.startsWith('✓')?"#6ee7b7":"#fcd34d",marginBottom:10}}>{vinMsg}</div>}
         <VLine label="Vehicle"><input value={f.vehicle} onChange={e=>s('vehicle',e.target.value)} placeholder="Year Make Model" style={{...inp,textAlign:"left"}} /></VLine>
         <VLine label="Price"><input value={f.price} onChange={e=>s('price',e.target.value)} placeholder="0.00" style={inp} /></VLine>
         <VLine label="Discount"><input value={f.discount} onChange={e=>s('discount',e.target.value)} placeholder="0.00" style={inp} /></VLine>
@@ -6524,7 +6759,7 @@ function App() {
           <ClientForm key={"new-"+prefillKey} initial={clientPrefill} onSave={handleSave} onCancel={()=>{nav("list");setClientPrefill(null);}} saving={saving} />
         </>}
 
-        {view==="agent" && <AgentView clients={clients} onNav={nav} />}
+        {view==="agent" && <AgentView clients={clients} onNav={nav} onSelectClient={(c)=>{setSelected(c);setView("detail");}} />}
         {view==="dashboard" && <DashboardView clients={clients}
           onFilterStage={(s)=>{setStageFilter(s);nav("list");}}
           onFilterSource={(s)=>{setSearch(s);nav("list");}}
