@@ -6,6 +6,7 @@ const SUPABASE_URL = "https://ozrybagfwnsaakjamztl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_hkoTQVteawqO4YAbj17F6Q_PmshLH50";
 
 const STORES = [
+  { name: "Fields Motorcars Orlando", base: "https://www.fieldsmotorcarsorlando.com", home: true },
   { name: "Rolls-Royce Motor Cars Seattle", base: "https://www.rolls-roycemotorcarsseattle.com" },
   { name: "Rolls-Royce Motor Cars Chicago", base: "https://www.rrmc-chicago.com" },
   { name: "Bentley Downers Grove", base: "https://www.bentleydownersgrove.com" },
@@ -119,6 +120,7 @@ exports.handler = async () => {
       vin: v.vin, store: v.store, year: v.year, make: v.make, model: v.model,
       trim: v.trim, price: v.price, mileage: v.mileage, condition: v.condition,
       stock_number: v.stock_number,
+      photo_url: v.photo_url ?? null, detail_url: v.detail_url ?? null,
       prev_price: prior ? (prior.prev_price ?? null) : null,
       price_dropped_at: prior ? (prior.price_dropped_at ?? null) : null,
       first_seen: prior ? (prior.first_seen ?? now) : now,
