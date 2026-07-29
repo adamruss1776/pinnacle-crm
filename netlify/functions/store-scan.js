@@ -51,6 +51,8 @@ function extractVehicles(html) {
         mileage: Number(v.odometer) || null,
         condition: (v.type || v.inventoryType || "").toLowerCase() || null,
         stock_number: v.stockNumber || null,
+        photo_url: (v.images && v.images[0] && v.images[0].uri) || null,
+        detail_url: v.link || null,
       };
     } catch (e) { /* not a clean object — skip */ }
   }
@@ -79,7 +81,11 @@ async function fetchStore(store) {
       } catch (e) { break; }
     }
   }
-  return Object.values(vehicles).map(v => ({ ...v, store: store.name }));
+  return Object.values(vehicles).map(v => ({
+    ...v,
+    store: store.name,
+    detail_url: v.detail_url ? (v.detail_url.startsWith("http") ? v.detail_url : store.base + v.detail_url) : null,
+  }));
 }
 
 exports.handler = async () => {
