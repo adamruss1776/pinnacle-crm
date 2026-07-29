@@ -564,6 +564,7 @@ function AgentView({clients, onNav}) {
 
   if (tool === 'decoder') return (<div style={{maxWidth:700}}><BackBtn /><DealSheetDecoder /></div>);
   if (tool === 'reconcile') return (<div style={{maxWidth:700}}><BackBtn /><InventoryReconcile /></div>);
+  if (tool === 'owners') return (<div style={{maxWidth:700}}><BackBtn /><OwnerOutreach clients={clients} onSelectClient={onSelectClient} /></div>);
   if (tool === 'social') return (<div style={{maxWidth:700}}><BackBtn /><SocialPostWriter /></div>);
 
   if (tool === 'sim') return (<div style={{maxWidth:680}}><BackBtn /><LeadSimChat /></div>);
@@ -588,6 +589,7 @@ function AgentView({clients, onNav}) {
           <Card icon="🚗" title="New at the Group" sub="Everything that landed at the five stores in the last 7 days." badge={arrivals7.length} onClick={()=>setTool('arrivals')} />
           <Card icon="📉" title="Price Drops" sub="Group vehicles marked down in the last 14 days — revival fuel." badge={drops14.length} onClick={()=>setTool('drops')} />
           <Card icon="🧮" title="Deal Sheet Decoder" sub="Drop a worksheet — Jessica rebuilds the math line by line and shows the rate behind it." onClick={()=>setTool('decoder')} />
+          <Card icon="🤝" title="Owner Outreach" sub="Past clients worth a call — anniversaries, birthdays, trade timing, open recalls." onClick={()=>setTool('owners')} />
           <Card icon="📣" title="Social Post Writer" sub="Pick a car, Jessica writes the Marketplace listing. You approve and post it." onClick={()=>setTool('social')} />
           <Card icon="🧹" title="Inventory Reconcile" sub="Find cars still in Pinnacle that have come off the store website." onClick={()=>setTool('reconcile')} />
           <Card icon="💬" title="Lead Simulator" sub="Watch Jessica work an inbound lead — great for training and demos." onClick={()=>setTool('sim')} />
@@ -654,6 +656,83 @@ function AgentView({clients, onNav}) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── OWNER OUTREACH — everyone worth a call this week ─────────────────
+function OwnerOutreach({clients, onSelectClient}) {
+  const [settings] = useSettings();
+  const [owned, setOwned] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [checking, setChecking] = React.useState(null);
+
+  const load = async () => {
+    const { data } = await sb.from('owned_vehicles').select('*');
+    setOwned(data||[]); setLoading(false);
+  };
+  React.useEffect(()=>{ load(); },[]);
+
+  const items = React.useMemo(()=>{
+    const byClient = {};
+    owned.forEach(v => { (byClient[v.client_id] = byClient[v.client_id] || []).push(v); });
+    const out = [];
+    (clients||[]).forEach(c => {
+      ownerSignals(c, byClient[c.id]||[]).forEach(s => out.push({c, ...s}));
+    });
+    return out.sort((a,b)=>a.urgency-b.urgency || (a.days??99)-(b.days??99));
+  },[clients, owned]);
+
+  const checkAllRecalls = async () => {
+    const withVin = owned.filter(v=>v.vin && v.vin.trim().length>=11);
+    if (!withVin.length) return;
+    for (let i=0;i<withVin.length;i++) {
+      const v = withVin[i];
+      setChecking(`Checking recalls — ${i+1} of ${withVin.length}…`);
+      try {
+        const res = await fetch('https://api.nhtsa.gov/recalls/vehicle?vin='+v.vin.trim());
+        const d = await res.json();
+        await sb.from('owned_vehicles').update({recall_count:(d.results||[]).length, recall_checked_at:new Date().toISOString()}).eq('id',v.id);
+      } catch {}
+    }
+    setChecking(null); await load();
+  };
+
+  const icon = {anniversary:'🎉', birthday:'🎂', tradecycle:'🔄', recall:'⚠'};
+  const tone = {anniversary:'#6ee7b7', birthday:'#93c5fd', tradecycle:'var(--gold)', recall:'#fca5a5'};
+
+  return (
+    <div>
+      <GLine label="Owner Outreach" />
+      <div style={{fontSize:13,color:"var(--muted)",margin:"12px 0 14px",lineHeight:1.7}}>
+        Reasons to reach out to people who already bought from you — anniversaries, birthdays, trade timing and open recalls on the cars they own.
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={checkAllRecalls} disabled={!!checking} style={{padding:"10px 20px",background:"rgba(201,168,76,0.2)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>
+          {checking || '⚠ Check All Recalls'}
+        </button>
+        <span style={{fontSize:11,color:"var(--dim2)"}}>{owned.length} vehicle{owned.length!==1?'s':''} on file across your clients</span>
+      </div>
+
+      {loading ? <div style={{fontSize:12,color:"var(--dim2)"}}>Loading…</div>
+        : items.length===0
+        ? <div style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:4,fontSize:13,color:"var(--muted)",lineHeight:1.7}}>
+            Nothing due right now. Add the vehicles your past clients own — open a client and use <b style={{color:"var(--text)"}}>Vehicles Owned</b> — and Jessica will start surfacing anniversaries, birthdays, trade windows and recalls here.
+          </div>
+        : items.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--surface)",border:`1px solid ${s.kind==='recall'?'rgba(252,165,165,0.4)':'rgba(201,168,76,0.28)'}`,borderRadius:4,marginBottom:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:18}}>{icon[s.kind]}</span>
+            <div style={{flex:1,minWidth:180}}>
+              <div style={{fontSize:13.5,color:"var(--text)"}}>
+                <span onClick={()=>onSelectClient&&onSelectClient(s.c)} style={{cursor:"pointer",textDecoration:"underline",textDecorationColor:"rgba(201,168,76,0.45)"}}>{s.c.first_name} {s.c.last_name}</span>
+              </div>
+              <div style={{fontSize:12,color:tone[s.kind],marginTop:2}}>{s.label}</div>
+            </div>
+            {s.c.cell && !s.c.do_not_text
+              ? <a href={smsHref(s.c.cell, s.text + (settings.rep_name?` — ${settings.rep_name}`:''))} style={{padding:"8px 16px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.6)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",textDecoration:"none",whiteSpace:"nowrap"}}>💬 Text</a>
+              : <span style={{fontSize:10,color:"var(--dim2)"}}>{!s.c.cell?'no cell':'do not text'}</span>}
+          </div>
+        ))}
     </div>
   );
 }
@@ -1618,6 +1697,197 @@ function QuickTexts({client}) {
   );
 }
 
+// ── OWNER OUTREACH MATH ─────────────────────────────────────────────
+// Turns a client + the cars they own into reasons to reach out.
+const daysUntilAnnual = (dateStr) => {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + (dateStr.length <= 10 ? 'T12:00:00' : ''));
+  if (isNaN(d)) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const next = new Date(now.getFullYear(), d.getMonth(), d.getDate());
+  if (next < now) next.setFullYear(next.getFullYear()+1);
+  return Math.round((next - now)/86400000);
+};
+const monthsSince = (dateStr) => {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + (dateStr.length <= 10 ? 'T12:00:00' : ''));
+  if (isNaN(d)) return null;
+  return Math.floor((Date.now() - d.getTime())/(86400000*30.44));
+};
+// Typical months before an owner starts looking again, by marque
+const TRADE_CYCLE = { lamborghini:24, ferrari:24, mclaren:24, 'rolls-royce':30, bentley:30, porsche:33, 'mercedes-benz':33, bmw:33, default:36 };
+const cycleFor = (make) => TRADE_CYCLE[(make||'').toLowerCase()] ?? TRADE_CYCLE.default;
+
+function ownerSignals(client, vehicles) {
+  const out = [];
+  const name = client.first_name || 'there';
+  (vehicles||[]).forEach(v => {
+    const vehName = [v.year,v.make,v.model,v.trim].filter(Boolean).join(' ');
+    const dAnniv = daysUntilAnnual(v.delivered_on);
+    if (dAnniv !== null && dAnniv <= 14) {
+      const yrs = v.delivered_on ? new Date().getFullYear() - new Date(v.delivered_on+'T12:00:00').getFullYear() + (dAnniv>0?1:0) : 1;
+      out.push({ kind:'anniversary', urgency: dAnniv===0?0:1, days:dAnniv, vehicle:v, vehName,
+        label: dAnniv===0 ? `Delivery anniversary TODAY — ${vehName}` : `${yrs}-year anniversary in ${dAnniv}d — ${vehName}`,
+        text: `Hi ${name}, hard to believe it's been ${yrs} year${yrs!==1?'s':''} since you took delivery of your ${vehName}! Hope it's still putting a smile on your face. Anything I can do for you — service, detail, anything at all — just say the word.` });
+    }
+    const mo = monthsSince(v.delivered_on);
+    const cyc = cycleFor(v.make);
+    if (mo !== null && mo >= cyc - 4) {
+      out.push({ kind:'tradecycle', urgency:2, vehicle:v, vehName, months:mo,
+        label: `${mo} months in the ${vehName} — typical ${v.make||''} trade window is ${cyc}`,
+        text: `Hi ${name}, you're coming up on ${mo} months in the ${vehName} — right about where a lot of owners start thinking about what's next. The market's been kind to these lately. Want me to pull what it's worth today and show you a couple of options? No pressure either way.` });
+    }
+    if (v.recall_count > 0) {
+      out.push({ kind:'recall', urgency:0, vehicle:v, vehName,
+        label: `${v.recall_count} open recall${v.recall_count!==1?'s':''} — ${vehName}`,
+        text: `Hi ${name}, running through my client list I noticed your ${vehName} has an open safety recall. It's covered at no cost to you. Want me to get you scheduled and arrange a loaner?` });
+    }
+  });
+  const dBday = daysUntilAnnual(client.birthday);
+  if (dBday !== null && dBday <= 14) {
+    out.push({ kind:'birthday', urgency: dBday===0?0:1, days:dBday,
+      label: dBday===0 ? 'Birthday TODAY' : `Birthday in ${dBday} days`,
+      text: `Hi ${name}, happy birthday! Hope you get to spend some of it behind the wheel. Enjoy your day.` });
+  }
+  return out.sort((a,b)=>a.urgency-b.urgency);
+}
+
+// ── VEHICLES OWNED (client detail) ──────────────────────────────────
+function OwnedVehicles({client}) {
+  const [settings] = useSettings();
+  const [rows, setRows] = React.useState([]);
+  const [adding, setAdding] = React.useState(false);
+  const [f, setF] = React.useState({vin:'',year:'',make:'',model:'',trim:'',color:'',mileage:'',delivered_on:'',purchased_from:'',notes:''});
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState(null);
+  const [confirmDel, setConfirmDel] = React.useState(null);
+
+  const load = async () => {
+    const { data } = await sb.from('owned_vehicles').select('*').eq('client_id', client.id).order('delivered_on',{ascending:false});
+    setRows(data||[]);
+  };
+  React.useEffect(()=>{ if(client?.id) load(); }, [client?.id]);
+
+  const decode = async (vinArg) => {
+    const vin = (vinArg || f.vin || '').trim().toUpperCase();
+    if (vin.length !== 17) { setMsg('A full 17-character VIN decodes automatically.'); return; }
+    setBusy(true);
+    try {
+      const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${vin}?format=json`);
+      const d = await res.json();
+      const get = k => d.Results?.find(r=>r.Variable===k)?.Value || '';
+      setF(p=>({...p, vin, year:get('Model Year')||p.year, make:get('Make')||p.make, model:get('Model')||p.model, trim:get('Trim')||get('Series')||p.trim}));
+      setMsg(null);
+    } catch { setMsg('Could not reach the VIN database — enter the details by hand.'); }
+    setBusy(false);
+  };
+
+  const save = async () => {
+    if (!f.year && !f.make && !f.vin) { setMsg('Add at least a VIN or a year and make.'); return; }
+    setBusy(true);
+    const { error } = await sb.from('owned_vehicles').insert([{...f, client_id: client.id, delivered_on: f.delivered_on || null}]);
+    if (error) setMsg('Could not save: '+error.message);
+    else { setF({vin:'',year:'',make:'',model:'',trim:'',color:'',mileage:'',delivered_on:'',purchased_from:'',notes:''}); setAdding(false); setMsg(null); await load(); }
+    setBusy(false);
+  };
+
+  const checkRecalls = async (row) => {
+    if (!row.vin) { setMsg('That vehicle needs a VIN before recalls can be checked.'); return; }
+    setBusy(true);
+    try {
+      const res = await fetch('https://api.nhtsa.gov/recalls/vehicle?vin='+row.vin.trim());
+      const d = await res.json();
+      const n = (d.results||[]).length;
+      await sb.from('owned_vehicles').update({recall_count:n, recall_checked_at:new Date().toISOString()}).eq('id',row.id);
+      setMsg(n>0 ? `⚠ ${n} open recall${n!==1?'s':''} on the ${[row.year,row.make,row.model].filter(Boolean).join(' ')} — that's a reason to call.` : `✓ No open recalls on the ${[row.year,row.make,row.model].filter(Boolean).join(' ')}.`);
+      await load();
+    } catch { setMsg('Recall lookup failed — try again in a moment.'); }
+    setBusy(false);
+  };
+
+  const remove = async (row) => { await sb.from('owned_vehicles').delete().eq('id',row.id); setConfirmDel(null); load(); };
+
+  const signals = ownerSignals(client, rows);
+  const inp2 = {width:"100%",padding:"9px 11px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:3,color:"var(--text)",fontSize:13};
+  const lbl2 = {fontSize:9,letterSpacing:"0.25em",color:gold,textTransform:"uppercase",marginBottom:4,display:"block"};
+
+  return (
+    <>
+      <GLine label="Vehicles Owned" />
+      <div style={{marginBottom:24}}>
+        {signals.length>0 && (
+          <div style={{marginBottom:14}}>
+            {signals.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginBottom:6,borderRadius:3,flexWrap:"wrap",
+                background: s.kind==='recall'?"rgba(252,165,165,0.07)":s.kind==='tradecycle'?"rgba(201,168,76,0.08)":"rgba(110,231,183,0.07)",
+                border: `1px solid ${s.kind==='recall'?"rgba(252,165,165,0.4)":s.kind==='tradecycle'?"rgba(201,168,76,0.4)":"rgba(110,231,183,0.35)"}`}}>
+                <span style={{fontSize:16}}>{s.kind==='recall'?'⚠':s.kind==='tradecycle'?'🔄':s.kind==='birthday'?'🎂':'🎉'}</span>
+                <span style={{flex:1,minWidth:150,fontSize:12.5,color:"var(--text)"}}>{s.label}</span>
+                {client.cell && !client.do_not_text
+                  ? <a href={smsHref(client.cell, s.text + (settings.rep_name?` — ${settings.rep_name}`:''))} style={{padding:"7px 14px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.6)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",textDecoration:"none",whiteSpace:"nowrap"}}>💬 Text</a>
+                  : <span style={{fontSize:10,color:"var(--dim2)"}}>{!client.cell?'no cell':'do not text'}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rows.length===0 && !adding && <div style={{fontSize:12.5,color:"var(--dim2)",marginBottom:12}}>No vehicles on file yet. Add what they drive and Jessica will track anniversaries, recalls and trade timing.</div>}
+
+        {rows.map((v,i)=>(
+          <div key={i} style={{padding:"12px 14px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.26)",borderRadius:4,marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:170}}>
+                <div style={{fontSize:14,color:"var(--text)"}}>{[v.year,v.make,v.model,v.trim].filter(Boolean).join(' ')||'Vehicle'}</div>
+                <div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>
+                  {[v.color, v.mileage?`${Number(v.mileage).toLocaleString()} mi`:null, v.delivered_on?`delivered ${new Date(v.delivered_on+'T12:00:00').toLocaleDateString()}`:null, v.purchased_from].filter(Boolean).join(' · ')}
+                </div>
+                {v.vin && <div style={{fontSize:10.5,color:"var(--dim2)",fontFamily:"monospace",marginTop:2}}>{v.vin}</div>}
+                {v.recall_checked_at && <div style={{fontSize:10.5,color:v.recall_count>0?"#fca5a5":"#6ee7b7",marginTop:3}}>
+                  {v.recall_count>0?`⚠ ${v.recall_count} open recall${v.recall_count!==1?'s':''}`:'✓ No open recalls'} · checked {new Date(v.recall_checked_at).toLocaleDateString()}
+                </div>}
+                {v.notes && <div style={{fontSize:11.5,color:"var(--muted)",marginTop:4,fontStyle:"italic"}}>{v.notes}</div>}
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {v.vin && <button onClick={()=>checkRecalls(v)} disabled={busy} style={{padding:"6px 12px",background:"transparent",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer"}}>Recalls</button>}
+                {v.vin && <a href={carfaxUrl(v.vin)} target="_blank" rel="noopener" style={{padding:"6px 12px",border:"1px solid var(--w10)",borderRadius:3,color:"var(--muted)",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",textDecoration:"none"}}>Carfax</a>}
+                {confirmDel===v.id
+                  ? <button onClick={()=>remove(v)} style={{padding:"6px 12px",background:"rgba(252,165,165,0.12)",border:"1px solid rgba(252,165,165,0.5)",borderRadius:3,color:"#fca5a5",fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer"}}>Confirm</button>
+                  : <button onClick={()=>setConfirmDel(v.id)} style={{padding:"6px 10px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--dim2)",fontSize:10,cursor:"pointer"}}>✕</button>}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {adding ? (
+          <div style={{padding:"16px 18px",background:"var(--surface)",border:"1px solid rgba(201,168,76,0.42)",borderRadius:4,marginTop:8}}>
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+              <input value={f.vin} onChange={e=>setF(p=>({...p,vin:e.target.value.toUpperCase()}))} maxLength={17} placeholder="VIN — decodes the rest automatically"
+                style={{flex:1,minWidth:180,padding:"11px 13px",background:"var(--bg)",border:"1px solid rgba(201,168,76,0.34)",borderRadius:3,color:"var(--text)",fontSize:13,fontFamily:"monospace"}} />
+              <VinScanButton onVin={(vin)=>{ setF(p=>({...p,vin})); decode(vin); }} />
+              <button onClick={()=>decode()} disabled={busy} style={{padding:"11px 18px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.55)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",whiteSpace:"nowrap"}}>{busy?'…':'Decode ✦'}</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:12}}>
+              {[['Year','year'],['Make','make'],['Model','model'],['Trim','trim'],['Color','color'],['Mileage','mileage']].map(([l,k])=>(
+                <div key={k}><span style={lbl2}>{l}</span><input value={f[k]} onChange={e=>setF(p=>({...p,[k]:e.target.value}))} style={inp2} /></div>
+              ))}
+              <div><span style={lbl2}>Delivered On</span><input type="date" value={f.delivered_on} onChange={e=>setF(p=>({...p,delivered_on:e.target.value}))} style={{...inp2,colorScheme:"dark"}} /></div>
+              <div><span style={lbl2}>Bought From</span><input value={f.purchased_from} onChange={e=>setF(p=>({...p,purchased_from:e.target.value}))} placeholder="us / elsewhere" style={inp2} /></div>
+            </div>
+            <div style={{marginBottom:12}}><span style={lbl2}>Notes</span><input value={f.notes} onChange={e=>setF(p=>({...p,notes:e.target.value}))} placeholder="Options, service history, anything worth remembering…" style={inp2} /></div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={save} disabled={busy} style={{padding:"11px 22px",background:"rgba(201,168,76,0.26)",border:"1px solid rgba(201,168,76,0.65)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>{busy?'Saving…':'Save Vehicle'}</button>
+              <button onClick={()=>{setAdding(false);setMsg(null);}} style={{padding:"11px 18px",background:"transparent",border:"1px solid var(--w08)",borderRadius:3,color:"var(--muted2)",fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer"}}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={()=>{setAdding(true);setMsg(null);}} style={{padding:"10px 20px",background:"rgba(201,168,76,0.16)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.16em",textTransform:"uppercase",cursor:"pointer",marginTop:4}}>+ Add Vehicle They Own</button>
+        )}
+        {msg && <div style={{fontSize:12,color:msg.startsWith('✓')?"#6ee7b7":msg.startsWith('⚠')?"#fcd34d":"var(--muted)",marginTop:10}}>{msg}</div>}
+      </div>
+    </>
+  );
+}
+
 // ── VIN → INVENTORY LOOKUP (client detail) ──────────────────────────
 function VinInventoryLookup({inventory, client, onAttach}) {
   const [vin, setVin] = React.useState('');
@@ -1852,6 +2122,7 @@ function Detail({client, onEdit, onBack, onDelete, onQuickUpdate}) {
           </div>
         )}
       </div>
+      <OwnedVehicles client={client} />
       {onQuickUpdate && <VinInventoryLookup inventory={inventory} client={client} onAttach={onQuickUpdate} />}
       <GLine label="Preferences" />
       <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap"}}>
