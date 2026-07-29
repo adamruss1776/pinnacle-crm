@@ -5121,6 +5121,10 @@ function DealDesk({client, initial, onClose, onSaved}) {
     county: countyFromZip(client?.zip) || '', mode: 'finance',
     terms: [{n:36,apr:8.24},{n:48,apr:8.24},{n:60,apr:8.24}],
     downs: [10000,20000,30000],
+    // lease
+    acqFee: 1495, leaseSurcharge: 60, capReduction: '', moneyFactor: 0.00450, annualMileage: 10000,
+    leaseTerms: [{n:24,res:58,mf:0.00474},{n:36,res:51,mf:0.00452},{n:39,res:51,mf:0.00448}],
+    stock:'', vin:'', color:'', condition:'New', mileage:'',
   });
   useEffect(() => {
     if (!feesTouched) setF(p => ({...p, docFee: settings.doc_fee ?? p.docFee, batteryFee: settings.battery_fee ?? p.batteryFee, licenseFee: settings.license_fee ?? p.licenseFee}));
@@ -5134,6 +5138,111 @@ function DealDesk({client, initial, onClose, onSaved}) {
   const tax = flVehicleTax(taxBase, f.county);
   const feesTotal = num(f.docFee) + num(f.batteryFee) + num(f.licenseFee);
   const balance = num(f.price) - num(f.discount) + feesTotal + tax.total - num(f.tradeAllow) + num(f.payoff);
+
+  // Lease: balance is the capitalized cost (price − discount − cap reduction + fees + acq + tax)
+  const leaseAdjPrice = num(f.price) - num(f.discount) - num(f.capReduction);
+  const leaseFees = num(f.docFee) + num(f.batteryFee) + num(f.licenseFee) + num(f.acqFee) + num(f.leaseSurcharge);
+  const leaseTaxBase = leaseAdjPrice + num(f.docFee);
+  const leaseTax = f.mode === 'lease' ? flVehicleTax(Math.max(0, leaseTaxBase * 0.03), f.county) : {total:0};
+  const leaseBalance = leaseAdjPrice + leaseFees + (f.mode === 'lease' ? leaseTax.total : 0);
+  const leasePmt = (term, down) => {
+    const residual = num(f.price) * (num(term.res)/100);
+    const cap = leaseBalance - num(down);
+    if (cap <= 0) return {pmt:0, residual, dep:0, rent:0};
+    const mf = num(term.mf) || num(f.moneyFactor);
+    const dep = (cap - residual) / num(term.n);
+    const rent = (cap + residual) * mf;
+    return {pmt: dep + rent, residual, dep, rent, mf};
+  };
+
+  const printQuote = () => {
+    const w = window.open('', '_blank');
+    if (!w) { alert('Allow pop-ups for this site to print quotes.'); return; }
+    const isLease = f.mode === 'lease';
+    const isCash = f.mode === 'cash';
+    const bal = isLease ? leaseBalance : balance;
+    const rows = [];
+    rows.push(['Market Value Selling Price', num(f.price)]);
+    if (num(f.discount)) rows.push(['Discount', -num(f.discount)]);
+    if (isLease && num(f.capReduction)) rows.push(['Cap Cost Reduction', -num(f.capReduction)]);
+    if (num(f.discount) || (isLease && num(f.capReduction))) rows.push([isLease?'Adjusted Price':'Total Purchase', num(f.price)-num(f.discount)-(isLease?num(f.capReduction):0)]);
+    if (!isLease && num(f.tradeAllow)) { rows.push(['Trade Allowance', -num(f.tradeAllow)]); rows.push(['Trade Difference', num(f.price)-num(f.discount)-num(f.tradeAllow)]); }
+    if (num(f.docFee)) rows.push(['Doc Fee', num(f.docFee)]);
+    if (num(f.batteryFee)) rows.push(['Battery Fee', num(f.batteryFee)]);
+    if (isLease && num(f.leaseSurcharge)) rows.push(['Lease Surcharge', num(f.leaseSurcharge)]);
+    rows.push(['Tax', isLease ? leaseTax.total : tax.total]);
+    if (isLease && num(f.acqFee)) rows.push(['Acquisition Fee', num(f.acqFee)]);
+    if (num(f.licenseFee)) rows.push(['License Fee', num(f.licenseFee)]);
+    if (!isLease && num(f.payoff)) rows.push(['Trade Payoff', num(f.payoff)]);
+    rows.push([isCash ? 'Cash Due' : 'Balance', bal]);
+
+    const gridHtml = isCash ? '' : isLease
+      ? `<table class="pay"><thead><tr><th>Cash Down</th>${f.downs.map(d=>`<th>${money(num(d))}</th>`).join('')}<th>Residual</th></tr></thead><tbody>
+         ${f.leaseTerms.map(t=>`<tr><td class="term">${t.n} Months</td>${f.downs.map(d=>{const r=leasePmt(t,d);return `<td><b>${r.pmt>0?money(r.pmt):'—'}</b><span class="pt">Plus Tax</span></td>`;}).join('')}<td>${money(num(f.price)*(num(t.res)/100))}</td></tr>`).join('')}
+         </tbody></table><div class="mileage">Annual Mileage Allowed: ${Number(f.annualMileage).toLocaleString()}</div>`
+      : `<table class="pay"><thead><tr><th>Cash Down</th>${f.downs.map(d=>`<th>${money(num(d))}</th>`).join('')}</tr></thead><tbody>
+         ${f.terms.map(t=>`<tr><td class="term">${t.n} Months <span class="apr">/ ${t.apr}&nbsp;*</span></td>${f.downs.map(d=>{const amt=balance-num(d);return `<td><b>${amt>0?money(monthlyPmt(amt,t.apr,t.n)):'paid'}</b></td>`;}).join('')}</tr>`).join('')}
+         <tr class="amtfin"><td class="term">Amt Financed</td>${f.downs.map(d=>`<td>${money(Math.max(0,balance-num(d)))}</td>`).join('')}</tr>
+         </tbody></table>`;
+
+    w.document.write(`<!DOCTYPE html><html><head><title>Quote — ${f.vehicle||'Vehicle'}</title><style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,Helvetica,sans-serif;color:#000;padding:28px 34px;font-size:12px}
+      .hdr{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px double #000;padding-bottom:8px;margin-bottom:12px}
+      .dealer{font-size:17px;font-weight:bold;letter-spacing:2px}
+      .rep{font-size:11px;text-align:right;line-height:1.5}
+      h2{font-size:12px;letter-spacing:1px;margin-bottom:4px}
+      .veh{border-bottom:3px double #000;padding-bottom:10px;margin-bottom:14px}
+      .vrow{display:flex;gap:26px;margin-bottom:3px;font-size:12px}
+      .vrow b{font-style:italic}
+      .lbl{color:#333}
+      .cols{display:flex;gap:26px;align-items:flex-start}
+      .left{flex:1.35}
+      .right{flex:1;max-width:340px}
+      table.pay{width:100%;border-collapse:collapse;border:1.5px solid #000}
+      table.pay th{background:#e8e8e8;border:1px solid #000;padding:7px 9px;font-size:11px;text-align:center}
+      table.pay th:first-child{text-align:left}
+      table.pay td{border:1px solid #000;padding:9px;text-align:center;font-size:16px}
+      table.pay td.term{text-align:left;font-size:12px;font-weight:bold;font-style:italic;width:110px}
+      table.pay td b{font-size:17px}
+      .apr{font-weight:normal;font-size:10px}
+      .pt{display:block;font-size:8px;font-style:italic;color:#444}
+      tr.amtfin td{font-size:13px;background:#f4f4f4}
+      .money tr td{padding:4px 0;font-size:12.5px}
+      .money tr td:last-child{text-align:right;border-bottom:1px solid #999;min-width:110px;padding-left:20px}
+      .money tr.total td{font-weight:bold;font-size:14px;padding-top:8px}
+      .mileage{margin-top:7px;font-size:11px;font-style:italic;border:1px solid #000;border-top:none;padding:5px 9px}
+      .disc{margin-top:16px;font-size:8.5px;line-height:1.45;color:#222;border-top:1px solid #999;padding-top:8px}
+      .sign{display:flex;gap:40px;margin-top:26px;font-size:10px}
+      .sign div{flex:1;border-top:1px solid #000;padding-top:4px}
+      @media print{body{padding:12px}}
+    </style></head><body>
+      <div class="hdr">
+        <div class="dealer">${(settings.dealership_name||'PINNACLE').toUpperCase()}</div>
+        <div class="rep">${settings.rep_name||''}${settings.rep_title?` · ${settings.rep_title}`:''}<br>${settings.rep_phone||''}${settings.rep_email?` · ${settings.rep_email}`:''}<br>${new Date().toLocaleDateString()}</div>
+      </div>
+      <div class="veh">
+        <h2>VEHICLE</h2>
+        <div class="vrow"><span><span class="lbl">Stock #:</span> <b>${f.stock||'—'}</b></span><span><span class="lbl">New / Used:</span> <b>${f.condition||''}</b></span><span><span class="lbl">VIN:</span> <b>${f.vin||'—'}</b></span><span><span class="lbl">Mileage:</span> <b>${f.mileage||'—'}</b></span></div>
+        <div class="vrow"><span><span class="lbl">Vehicle:</span> <b>${f.vehicle||'—'}</b></span><span><span class="lbl">Color:</span> <b>${f.color||'—'}</b></span></div>
+        ${client?`<div class="vrow"><span><span class="lbl">Prepared for:</span> <b>${client.first_name||''} ${client.last_name||''}</b></span></div>`:''}
+      </div>
+      <div class="cols">
+        <div class="left">
+          ${isCash?'':`<h2>${isLease?'LEASE PAYMENTS':'LOAN PAYMENTS'} &nbsp;<span style="font-weight:normal;font-style:italic">Estimated</span></h2>`}
+          ${gridHtml}
+          ${isCash?'<h2>CASH PURCHASE</h2><p style="font-size:12px;margin-top:6px">Total due at delivery shown at right.</p>':''}
+        </div>
+        <div class="right">
+          <table class="money">${rows.map(([l,v],i)=>`<tr class="${i===rows.length-1?'total':''}"><td>${l}</td><td>${(v<0?'-':'')+'$'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`).join('')}</table>
+        </div>
+      </div>
+      <div class="disc">* A.P.R. subject to equity and credit requirements. Finance notice: all finance or lease options are based on current lender rates &amp; programs which are subject to change. Rates and programs may expire and/or change prior to delivery of your vehicle. Estimates shown — taxes, tag and registration fees to be verified. For information only. This is not an offer or contract for sale.</div>
+      <div class="sign"><div>Customer Approval</div><div>Management Approval</div></div>
+      <script>window.onload=function(){window.print();}<\/script>
+    </body></html>`);
+    w.document.close();
+  };
 
   const saveQuote = async () => {
     setSaving(true);
@@ -5166,19 +5275,84 @@ function DealDesk({client, initial, onClose, onSaved}) {
           </select>
         </VLine>
         <VLine label="Sales Tax" hint="FL 6% + county surtax"><RO v={tax.total} color={gold} /></VLine>
+        {f.mode === 'lease' && <>
+          <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"12px 0"}} />
+          <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Lease Terms</div>
+          <VLine label="Cap Cost Reduction"><input value={f.capReduction} onChange={e=>s('capReduction',e.target.value)} placeholder="0.00" style={inp} /></VLine>
+          <VLine label="Acquisition Fee"><input value={f.acqFee} onChange={e=>s('acqFee',e.target.value)} style={inp} /></VLine>
+          <VLine label="Lease Surcharge"><input value={f.leaseSurcharge} onChange={e=>s('leaseSurcharge',e.target.value)} style={inp} /></VLine>
+          <VLine label="Money Factor" hint={`≈ ${(num(f.moneyFactor)*2400).toFixed(2)}% APR`}><input value={f.moneyFactor} onChange={e=>s('moneyFactor',e.target.value)} style={inp} /></VLine>
+          <VLine label="Annual Mileage"><input value={f.annualMileage} onChange={e=>s('annualMileage',e.target.value)} style={inp} /></VLine>
+        </>}
         <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"12px 0"}} />
-        <VLine label="Balance"><RO v={balance} color={gold} /></VLine>
+        <VLine label={f.mode==='lease'?'Cap Cost':'Balance'}><RO v={f.mode==='lease'?leaseBalance:balance} color={gold} /></VLine>
+        <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"12px 0"}} />
+        <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>For the Printed Quote</div>
+        <VLine label="Stock #"><input value={f.stock} onChange={e=>s('stock',e.target.value)} style={{...inp,textAlign:"left"}} /></VLine>
+        <VLine label="VIN"><input value={f.vin} onChange={e=>s('vin',e.target.value.toUpperCase())} maxLength={17} style={{...inp,textAlign:"left",fontFamily:"monospace",fontSize:11}} /></VLine>
+        <VLine label="Color"><input value={f.color} onChange={e=>s('color',e.target.value)} style={{...inp,textAlign:"left"}} /></VLine>
+        <VLine label="Mileage"><input value={f.mileage} onChange={e=>s('mileage',e.target.value)} style={inp} /></VLine>
+        <VLine label="New / Used">
+          <select value={f.condition} onChange={e=>s('condition',e.target.value)} style={{...inp,textAlign:"left",cursor:"pointer"}}>
+            <option>New</option><option>Used</option><option>Certified</option>
+          </select>
+        </VLine>
       </div>
 
       {/* PAYMENTS */}
       <div style={{flex:"2 1 380px",minWidth:320,background:"var(--surface)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:4,padding:"18px 20px"}}>
         <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}>
-          {[['finance','Finance'],['cash','Cash']].map(([m,lbl])=>(
+          {[['finance','Finance'],['lease','Lease'],['cash','Cash']].map(([m,lbl])=>(
             <button key={m} onClick={()=>s('mode',m)} style={{padding:"8px 20px",background:f.mode===m?"rgba(201,168,76,0.15)":"transparent",border:`1px solid ${f.mode===m?"rgba(201,168,76,0.5)":"var(--w06)"}`,borderRadius:3,color:f.mode===m?gold:"var(--nav-text)",fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>{lbl}</button>
           ))}
           <span style={{marginLeft:"auto",fontSize:10,letterSpacing:"0.25em",color:gold,textTransform:"uppercase"}}>Estimated Payments</span>
         </div>
-        {f.mode === 'cash' ? (
+        {f.mode === 'lease' ? (
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:430}}>
+              <thead>
+                <tr>
+                  <th style={{fontSize:9,letterSpacing:"0.2em",color:"var(--muted2)",textTransform:"uppercase",padding:"6px 8px",textAlign:"left"}}>Term</th>
+                  <th style={{fontSize:9,letterSpacing:"0.2em",color:"var(--muted2)",textTransform:"uppercase",padding:"6px 8px",textAlign:"left"}}>Res %</th>
+                  <th style={{fontSize:9,letterSpacing:"0.2em",color:"var(--muted2)",textTransform:"uppercase",padding:"6px 8px",textAlign:"left"}}>MF</th>
+                  {f.downs.map((d,i)=>(
+                    <th key={i} style={{padding:"6px 8px"}}>
+                      <div style={{fontSize:9,letterSpacing:"0.15em",color:gold,textTransform:"uppercase",marginBottom:4,textAlign:"right"}}>Cash Down</div>
+                      <input value={d} onChange={e=>setF(p=>{const downs=[...p.downs];downs[i]=e.target.value;return {...p,downs};})} style={{...inp,padding:"6px 8px",fontSize:12}} />
+                    </th>
+                  ))}
+                  <th style={{fontSize:9,letterSpacing:"0.2em",color:"var(--muted2)",textTransform:"uppercase",padding:"6px 8px",textAlign:"right"}}>Residual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {f.leaseTerms.map((t,ti)=>(
+                  <tr key={ti}>
+                    <td style={{padding:"4px 8px",width:70}}>
+                      <input value={t.n} onChange={e=>setF(p=>{const lt=[...p.leaseTerms];lt[ti]={...lt[ti],n:parseInt(e.target.value)||0};return {...p,leaseTerms:lt};})} style={{...inp,padding:"7px 8px",fontSize:12}} />
+                    </td>
+                    <td style={{padding:"4px 8px",width:70}}>
+                      <input value={t.res} onChange={e=>setF(p=>{const lt=[...p.leaseTerms];lt[ti]={...lt[ti],res:e.target.value};return {...p,leaseTerms:lt};})} style={{...inp,padding:"7px 8px",fontSize:12}} />
+                    </td>
+                    <td style={{padding:"4px 8px",width:82}}>
+                      <input value={t.mf ?? ''} placeholder={String(f.moneyFactor)} onChange={e=>setF(p=>{const lt=[...p.leaseTerms];lt[ti]={...lt[ti],mf:e.target.value};return {...p,leaseTerms:lt};})} style={{...inp,padding:"7px 8px",fontSize:11}} />
+                    </td>
+                    {f.downs.map((d,di)=>{
+                      const r = leasePmt(t,d);
+                      return <td key={di} style={{padding:"4px 8px",textAlign:"right"}}>
+                        <div style={{padding:"8px 10px",background:r.pmt<=0?"var(--w02)":"rgba(147,197,253,0.07)",border:"1px solid rgba(147,197,253,0.28)",borderRadius:3,fontSize:14,color:r.pmt<=0?"var(--dim2)":"var(--text)"}}>
+                          {r.pmt<=0 ? "—" : money(r.pmt)+"/mo"}
+                          <div style={{fontSize:8.5,color:"var(--dim2)",fontStyle:"italic"}}>plus tax</div>
+                        </div>
+                      </td>;
+                    })}
+                    <td style={{padding:"4px 8px",textAlign:"right",fontSize:12,color:"var(--muted)"}}>{money(num(f.price)*(num(t.res)/100))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{fontSize:11,color:"var(--dim2)",marginTop:8}}>Money factor {f.moneyFactor} ≈ {(num(f.moneyFactor)*2400).toFixed(2)}% APR · {Number(f.annualMileage).toLocaleString()} mi/yr · residual is % of selling price</div>
+          </div>
+        ) : f.mode === 'cash' ? (
           <div style={{maxWidth:340}}>
             {[["Vehicle Price", num(f.price)],["Discount", -num(f.discount)],["Fees", feesTotal],["Sales Tax", tax.total],["Trade Allowance", -num(f.tradeAllow)],["Trade Pay Off", num(f.payoff)]].filter(([,v])=>v!==0).map(([lbl,v])=>(
               <div key={lbl} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--w04)"}}>
@@ -5235,6 +5409,7 @@ function DealDesk({client, initial, onClose, onSaved}) {
         )}
         <div style={{display:"flex",gap:10,alignItems:"center",marginTop:18,flexWrap:"wrap"}}>
           <button onClick={saveQuote} disabled={saving} style={{padding:"10px 22px",background:"rgba(201,168,76,0.18)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer",opacity:saving?0.6:1}}>💾 Save Quote</button>
+          <button onClick={printQuote} style={{padding:"10px 22px",background:"rgba(201,168,76,0.3)",border:"1px solid rgba(201,168,76,0.7)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.22em",textTransform:"uppercase",cursor:"pointer",fontWeight:600}}>🖨 Print Quote</button>
           {savedMsg && <span style={{fontSize:12,color:"#6fcf97"}}>✓ Quote saved{client?` to ${client.first_name}'s profile`:''}</span>}
           <span style={{fontSize:10,color:"var(--dim2)",marginLeft:"auto"}}>Estimates only — verify with F&I before contracting</span>
         </div>
