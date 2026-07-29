@@ -154,6 +154,18 @@ exports.handler = async (event) => {
     if (db !== null && db <= 7) outreach.push({ c, kind: "🎂", note: db === 0 ? "Birthday today" : `Birthday in ${db} days` });
   });
 
+  // Equity — value on file exceeds what they still owe
+  const equity = [];
+  clients.forEach(c => {
+    (ownedBy[c.id] || []).forEach(v => {
+      const val = Number(v.estimated_value) || 0;
+      if (!val) return;
+      const eq = val - (Number(v.payoff) || 0);
+      if (eq > 0) equity.push({ c, v, eq, val, owe: Number(v.payoff) || 0 });
+    });
+  });
+  equity.sort((a, b) => b.eq - a.eq);
+
   // News
   const all = (await Promise.all(FEEDS.map(fetchFeed))).flat();
   const seen = new Set();
@@ -188,7 +200,7 @@ exports.handler = async (event) => {
 
     <tr><td style="padding:18px 0 0">
       <table width="100%"><tr>
-        ${[["New Arrivals", arrivals.length, "#1f8a52"], ["Price Drops (7d)", drops.length, "#a16207"], ["Client Matches", matches.length, "#8f6b10"], ["Owner Calls", outreach.length, "#1d4ed8"], ["Going Cold", cold.length, "#b91c1c"]]
+        ${[["New Arrivals", arrivals.length, "#1f8a52"], ["Price Drops (7d)", drops.length, "#a16207"], ["Client Matches", matches.length, "#8f6b10"], ["In Equity", equity.length, "#1f8a52"], ["Owner Calls", outreach.length, "#1d4ed8"]]
           .map(([l, v, c]) => `<td align="center" style="padding:10px;background:#faf8f4;border-radius:5px">
             <div style="font-size:26px;color:${c};font-weight:600">${v}</div>
             <div style="font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px">${l}</div></td>`).join('<td width="8"></td>')}
@@ -207,6 +219,17 @@ exports.handler = async (event) => {
 
     ${arrivals.length ? section("New Arrivals — Last 36 Hours", "#1f8a52",
       `<table width="100%">${arrivals.slice(0, 10).map(v => vehicleCard(v)).join("")}</table>`) : ""}
+
+    ${equity.length ? section("These clients are potentially in an equitable position", "#1f8a52",
+      `<table width="100%">${equity.slice(0, 10).map(e => `<tr><td style="padding:9px 0;border-bottom:1px solid #eee">
+        <table width="100%"><tr>
+          <td><div style="font-size:14px;color:#1a1208;font-weight:600">${esc(e.c.first_name || "")} ${esc(e.c.last_name || "")}</div>
+            <div style="font-size:12px;color:#777;margin-top:2px">${esc([e.v.year, e.v.make, e.v.model, e.v.trim].filter(Boolean).join(" "))}</div>
+            <div style="font-size:11px;color:#999;margin-top:2px">${money(e.val)} value${e.owe ? ` − ${money(e.owe)} owed` : " · owned outright"}${e.c.cell ? ` · ${esc(e.c.cell)}` : ""}</div></td>
+          <td align="right" style="white-space:nowrap"><div style="font-size:18px;color:#1f8a52;font-weight:600">${money(e.eq)}</div>
+            <div style="font-size:9px;color:#999;letter-spacing:1px;text-transform:uppercase">equity</div></td>
+        </tr></table></td></tr>`).join("")}</table>
+       <div style="font-size:11px;color:#999;padding-top:8px;line-height:1.5">Based on the values you've entered against each vehicle. Open Equity Radar in Pinnacle to see suggested upgrades and build a quote.</div>`) : ""}
 
     ${outreach.length ? section("Owner Outreach — reasons to call today", "#1d4ed8",
       `<table width="100%">${outreach.slice(0, 10).map(o => `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#333">
