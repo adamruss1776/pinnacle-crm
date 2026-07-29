@@ -96,7 +96,12 @@ function vehicleCard(v, extra) {
     </td></tr></table></td></tr>`;
 }
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  // Allow ?to= and ?from= overrides so the report can be tested or redirected
+  // without a redeploy (handy until the sending domain is verified).
+  const qs = (event && event.queryStringParameters) || {};
+  const sendTo = qs.to || REPORT_TO;
+  const sendFrom = qs.from || undefined;
   const now = Date.now();
   const [inv, clients] = await Promise.all([
     sb("store_inventory?select=*"),
@@ -193,7 +198,7 @@ exports.handler = async () => {
   const send = await fetch(`${process.env.URL || "https://pinnaclecrm.ai"}/.netlify/functions/send-email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to: REPORT_TO, subject, html }),
+    body: JSON.stringify({ to: sendTo, subject, html, ...(sendFrom ? { from: sendFrom } : {}) }),
   });
   const sendResult = await send.text();
 
@@ -201,7 +206,7 @@ exports.handler = async () => {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      sentTo: REPORT_TO, subject,
+      sentTo: sendTo, subject,
       counts: { arrivals: arrivals.length, drops: drops.length, homeDrops: homeDrops.length, matches: matches.length, cold: cold.length },
       news: { luxury: luxNews.length, used: mktNews.length, ai: aiNews.length, feedsReturned: uniq.length },
       sendResult: sendResult.slice(0, 200),
