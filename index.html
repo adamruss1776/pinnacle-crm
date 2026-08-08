@@ -2581,6 +2581,101 @@ function JessicaAlerts({clients, onSelectClient}) {
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────────────
+
+// ── A.D.A.M. — SERVICE DEPARTMENT AGENT (demo) ─────────────────────
+// Deterministic safety core lives in /.netlify/functions/adam.
+// You chat as the CUSTOMER (fictional client, 2022 Ghost in the shop
+// awaiting brake approval). Nothing here touches real client data.
+function AdamView() {
+  const [msgs, setMsgs] = React.useState([
+    {who:"adam", text:"Good afternoon — this is A.D.A.M., Pinnacle's service assistant. How can I help you today?"}
+  ]);
+  const [input, setInput] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const endRef = React.useRef(null);
+
+  const TRY = [
+    ["Is my car ready yet?", "Live status from the demo repair order"],
+    ["How much will the brakes cost?", "Estimate figures only — never guessed"],
+    ["Is there a recall on my Ghost?", "Refuses to answer from memory; points to NHTSA"],
+    ["My brakes went to the floor", "Safety escalation + don't-drive advisory"],
+    ["Ok I guess go ahead", "Ambiguous approval routed to a human"],
+    ["STOP", "Opt-out honored instantly"],
+  ];
+
+  async function send(text) {
+    const t = (text ?? input).trim();
+    if (!t || busy) return;
+    setInput("");
+    setMsgs(m => [...m, {who:"you", text:t}]);
+    setBusy(true);
+    try {
+      const res = await fetch("/.netlify/functions/adam", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message:t})});
+      const d = await res.json();
+      setMsgs(m => [...m, {who:"adam", text:d.reply || d.error || "Something went wrong.", meta:d}]);
+    } catch {
+      setMsgs(m => [...m, {who:"adam", text:"Sorry — I couldn't reach the server."}]);
+    } finally {
+      setBusy(false);
+      setTimeout(()=>endRef.current?.scrollIntoView({behavior:"smooth"}), 60);
+    }
+  }
+
+  return (
+    <div className="fu" style={{maxWidth:860}}>
+      <div style={{marginBottom:24}}>
+        <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Service Department</div>
+        <h1 style={{fontSize:30,color:"var(--text)"}}>A.D.A.M.</h1>
+        <p style={{fontSize:12,color:"var(--muted)",marginTop:4}}>Automotive Digital Advisor &amp; Manager — customer-channel demo. You're chatting as a fictional client whose 2022 Rolls-Royce Ghost is in the shop awaiting brake approval.</p>
+      </div>
+
+      <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 480px",minWidth:340}}>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:4,display:"flex",flexDirection:"column",height:520}}>
+            <div style={{flex:1,overflowY:"auto",padding:18}}>
+              {msgs.map((m,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:m.who==="you"?"flex-end":"flex-start",marginBottom:10}}>
+                  <div style={{maxWidth:"80%",padding:"10px 14px",borderRadius:m.who==="you"?"12px 12px 3px 12px":"12px 12px 12px 3px",background:m.who==="you"?"rgba(201,168,76,0.18)":"var(--w05)",border:"1px solid "+(m.who==="you"?"rgba(201,168,76,0.35)":"var(--w06)"),fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                    {m.text}
+                    {m.meta && (m.meta.escalated || m.meta.doNotDriveAdvisory) && (
+                      <div style={{marginTop:8,paddingTop:6,borderTop:"1px solid var(--w06)",fontSize:10,letterSpacing:"0.08em",color:"var(--muted)"}}>
+                        {m.meta.doNotDriveAdvisory && "⚠ SAFETY ADVISORY · "}
+                        {m.meta.escalated && "↑ ESCALATED TO STAFF · "}
+                        {"INTENT: "+(m.meta.intent||"").toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {busy && <div style={{fontSize:11,color:"var(--dim)"}}>A.D.A.M. is typing…</div>}
+              <div ref={endRef} />
+            </div>
+            <div style={{display:"flex",gap:8,padding:12,borderTop:"1px solid var(--w06)"}}>
+              <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Type a message as the customer…" style={{flex:1,padding:"10px 12px",background:"var(--w03)",border:"1px solid var(--w06)",borderRadius:3,color:"var(--text)",fontSize:13}} />
+              <button onClick={()=>send()} disabled={busy||!input.trim()} style={{padding:"10px 20px",background:"rgba(201,168,76,0.22)",border:"1px solid rgba(201,168,76,0.7)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer",opacity:busy||!input.trim()?0.4:1}}>Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{flex:"0 1 280px",minWidth:240}}>
+          <div style={{background:"var(--surface)",border:"1px solid var(--w06)",borderRadius:4,padding:16}}>
+            <div style={{fontSize:10,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:12}}>Try these</div>
+            {TRY.map(([q,why])=>(
+              <div key={q} onClick={()=>!busy&&send(q)} style={{padding:"10px 12px",marginBottom:8,background:"var(--w03)",border:"1px solid var(--w06)",borderRadius:3,cursor:"pointer"}}>
+                <div style={{fontSize:12,color:"var(--text)"}}>&ldquo;{q}&rdquo;</div>
+                <div style={{fontSize:10,color:"var(--muted)",marginTop:3}}>{why}</div>
+              </div>
+            ))}
+            <div style={{fontSize:10,color:"var(--dim)",lineHeight:1.7,marginTop:12}}>
+              Safety rules are deterministic code, not AI: no invented prices, no guessed recalls, no promised times. Anything involving money or safety escalates to a human.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardView({clients, onFilterStage, onFilterSource, onSelectClient}) {
   const [convCount, setConvCount] = React.useState(0);
   React.useEffect(()=>{
@@ -6670,12 +6765,17 @@ function App() {
         </div>
         <div style={{height:1,background:"rgba(201,168,76,0.26)",margin:"0 24px 20px"}} />
         <nav style={{padding:"0 12px",flex:1}}>
-          {[["Dashboard","dashboard"],["My Numbers","sales"],["Clients","list"],["Quick Quote","quickquote"],["Sourcing ✦","source"],["AI Agent","agent"],["Inbox","inbox"],["Follow-Ups","followups"],["Inventory","inventory"],["Forms","forms"],["Recalls","recalls"],["Stores","stores"],["Market ✦","market"],["Appraisal","appraise"],["New Lead","new"]].map(([lbl,v])=>(
+          {[["Sell",[["Dashboard","dashboard"],["My Numbers","sales"],["Clients","list"],["Quick Quote","quickquote"],["Appraisal","appraise"],["Forms","forms"]]],["AI",[["Jessica · Sales","agent"],["A.D.A.M. · Service","adam"],["Inbox","inbox"],["Follow-Ups","followups"]]],["Vehicles",[["Inventory","inventory"],["Sourcing ✦","source"],["Stores","stores"],["Market ✦","market"],["Recalls","recalls"]]]].map(([grp,items])=>(
+            <div key={grp} style={{marginBottom:14}}>
+              <div style={{padding:"0 13px 6px",fontSize:9,letterSpacing:"0.35em",color:"var(--dim)",textTransform:"uppercase"}}>{grp}</div>
+              {items.map(([lbl,v])=>(
             <button key={v} data-nav={v} onClick={()=>nav(v)} style={{width:"100%",padding:"11px 13px",background:view===v?gold:"transparent",border:view===v?"1px solid "+goldBright:"1px solid transparent",borderRadius:3,color:view===v?goldInk:"var(--nav-text)",fontSize:13,fontWeight:view===v?500:400,letterSpacing:"0.16em",textTransform:"uppercase",textAlign:"left",marginBottom:4,cursor:"pointer",transition:"all 0.2s"}}
               onMouseEnter={e=>{if(view!==v){e.currentTarget.style.background="rgba(212,168,67,0.14)";e.currentTarget.style.color=goldBright;}}}
               onMouseLeave={e=>{if(view!==v){e.currentTarget.style.background="transparent";e.currentTarget.style.color="var(--nav-text)";}}}>
               {lbl}
             </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div style={{padding:"16px 24px",borderTop:"1px solid rgba(201,168,76,0.22)"}}>
@@ -6765,6 +6865,7 @@ function App() {
           onFilterSource={(s)=>{setSearch(s);nav("list");}}
           onSelectClient={(c)=>{setSelected(c);setView("detail");}}
         />}
+        {view==="adam" && <AdamView />}
         {view==="inbox" && <JessicaInbox onPushToClient={(d)=>{setView("new"); window._prefill=d;}} />}
         {view==="followups" && <FollowUpsView clients={clients} />}
         {view==="inventory" && <InventoryView clients={clients} />}
