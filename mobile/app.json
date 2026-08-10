@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Pinnacle CRM",
+    "slug": "pinnacle-crm",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f9f6f1"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pinnacle.crm",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f9f6f1"
+      },
+      "package": "com.pinnacle.crm"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "47e9ddbf-6bfc-43ae-8543-070e3f9c1ca6"
+      }
+    },
+    "owner": "adamr1000"
+  }
+}
