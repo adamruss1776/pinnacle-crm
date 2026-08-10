@@ -1076,7 +1076,27 @@ function DealSheetDecoder() {
       if (text.replace(/\s/g,'').length < 40) throw new Error("Couldn't read that image — try a straighter, brighter photo.");
       setStage('Rebuilding the math…');
       const p = parseDealSheet(text);
-      if (!p.price && !p.balance) throw new Error("Read the file, but couldn't find the money columns. Make sure the whole worksheet is in frame.");
+      if (!p.price && !p.balance) {
+              // Cropped worksheet (no cap-cost column). If we have the lease payment grid,
+              // back-solve the adjusted cap cost + money factor from the term/payment/residual rows.
+              const __rows = (p.leaseTerms||[]).map(t=>({ t, n:num(t.n)||num(t.months)||num(t.term), pmt:num(t.pmt)||num(t.payment)||num(t.pay), res:num(t.residual)||num(t.res) })).filter(r=>r.n>0 && r.pmt>0 && r.res>0);
+              const __capAt = (f)=>__rows.map(r=>(r.pmt - r.res*(f - 1/r.n))/(1/r.n + f));
+              const __spread = (f)=>{ const c=__capAt(f); return Math.max.apply(null,c)-Math.min.apply(null,c); };
+              let __ok=false;
+              if (__rows.length >= 2) {
+                let bF=0,bS=Infinity;
+                for(let f=0;f<=0.03;f+=0.00002){ const sp=__spread(f); if(sp<bS){bS=sp;bF=f;} }
+                for(let f=Math.max(0,bF-0.00003);f<=bF+0.00003;f+=0.0000004){ const sp=__spread(f); if(sp<bS){bS=sp;bF=f;} }
+                const __caps=__capAt(bF); const __cap=__caps.reduce((a,b)=>a+b,0)/__caps.length;
+                if (isFinite(__cap) && __cap>0) {
+                  p.price = __cap + (num(p.capReduction)||0); p.balance = p.price;
+                  p.moneyFactor = bF; p.derivedFromGrid = true; p.derivedCap = __cap; p.derivedMF = bF;
+                  (p.leaseTerms||[]).forEach(t=>{ t.mf = bF; });
+                  __ok = true;
+                }
+              }
+              if (!__ok) throw new Error("Read the file, but couldn't find the money columns. Make sure the whole worksheet is in frame.");
+            }
       setParsed(p); setDecoded(decodeDealSheet(p));
     } catch(e){ setError(e.message); }
     setBusy(false); setStage('');
