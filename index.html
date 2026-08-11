@@ -1943,7 +1943,7 @@ function OwnedVehicles({client}) {
   const save = async () => {
     if (!f.year && !f.make && !f.vin) { setMsg('Add at least a VIN or a year and make.'); return; }
     setBusy(true);
-    const { error } = await sb.from('owned_vehicles').insert([{...f, client_id: client.id, delivered_on: f.delivered_on || null}]);
+    const { error } = await sb.from('owned_vehicles').insert([{...f, client_id: client.id, delivered_on: f.delivered_on || null, purchase_price: (f.purchase_price==='' || f.purchase_price==null) ? null : Number(f.purchase_price), payoff: (f.payoff==='' || f.payoff==null) ? null : Number(f.payoff), estimated_value: (f.estimated_value==='' || f.estimated_value==null) ? null : Number(f.estimated_value), recall_count: (f.recall_count==='' || f.recall_count==null) ? 0 : Number(f.recall_count)}]);
     if (error) setMsg('Could not save: '+error.message);
     else { setF({vin:'',year:'',make:'',model:'',trim:'',color:'',mileage:'',delivered_on:'',purchased_from:'',notes:''}); setAdding(false); setMsg(null); await load(); }
     setBusy(false);
