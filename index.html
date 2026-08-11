@@ -6197,6 +6197,7 @@ function DealDesk({client, initial, onClose, onSaved}) {
         {f.mode === 'lease' && <>
           <div style={{height:1,background:"rgba(201,168,76,0.15)",margin:"12px 0"}} />
           <div style={{fontSize:9,letterSpacing:"0.3em",color:gold,textTransform:"uppercase",marginBottom:8}}>Lease Terms</div>
+              {decoded.derivedFromGrid && <div style={{fontSize:10,color:"var(--muted)",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.28)",borderRadius:3,padding:"5px 9px",marginBottom:8}}>◈ Estimated — the sheet’s price column wasn’t readable, so the money factor and cap cost were back-solved from the payment grid.</div>}
           <VLine label="Cap Cost Reduction"><input value={f.capReduction} onChange={e=>s('capReduction',e.target.value)} placeholder="0.00" style={inp} /></VLine>
           <VLine label="Acquisition Fee"><input value={f.acqFee} onChange={e=>s('acqFee',e.target.value)} style={inp} /></VLine>
           <VLine label="Lease Surcharge"><input value={f.leaseSurcharge} onChange={e=>s('leaseSurcharge',e.target.value)} style={inp} /></VLine>
