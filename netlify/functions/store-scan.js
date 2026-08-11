@@ -89,12 +89,46 @@ async function fetchStore(store) {
   }));
 }
 
+function __slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
+async function __syncToInventory(store, vs){
+  try{
+    const src=__slug(store.name);
+    const now=new Date().toISOString();
+    const rows=(vs||[]).filter(function(v){return v.vin;}).map(function(v){ return {
+      vin:v.vin, year:(v.year!=null)?String(v.year):null, make:v.make||null, model:v.model||null, trim:v.trim||null,
+      color:v.color||null, price:(v.price!=null)?v.price:null, mileage:(v.mileage!=null)?String(v.mileage):null,
+      store:store.name, status:(String(v.condition||'').toLowerCase().indexOf('new')>-1)?'New':'Used',
+      stock_number:v.stock_number||null, source:src, last_seen:now, updated_at:now }; });
+    if(!rows.length) return;
+    await fetch(`${SUPABASE_URL}/rest/v1/inventory?on_conflict=vin`, { method:'POST', headers:{ apikey:SUPABASE_KEY, Authorization:'Bearer '+SUPABASE_KEY, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates,return=minimal' }, body:JSON.stringify(rows) });
+    const vinList=rows.map(function(r){return '"'+r.vin+'"';}).join(',');
+    if(vinList) await fetch(`${SUPABASE_URL}/rest/v1/inventory?source=eq.${src}&vin=not.in.(${vinList})`, { method:'DELETE', headers:{ apikey:SUPABASE_KEY, Authorization:'Bearer '+SUPABASE_KEY } });
+  }catch(e){}
+}
+
 exports.handler = async () => {
   const now = new Date().toISOString();
   const perStore = {};
   let all = [];
+    try {
+    const dq = await fetch(`${SUPABASE_URL}/rest/v1/dealerships?select=name,base_url,feeds&active=eq.true`, { headers:{ apikey:SUPABASE_KEY, Authorization:'Bearer '+SUPABASE_KEY } });
+    if (dq.ok) {
+      const extra = await dq.json();
+      const norm = function(u){ return String(u||'').replace(/\/+$/,'').toLowerCase(); };
+      const have = new Set(STORES.map(function(s){return norm(s.base);}));
+      for (const d of (extra||[])) {
+        const b = String(d.base_url||'').replace(/\/+$/,'');
+        if (!b) continue;
+        if (have.has(norm(b))) { if (d.feeds==='main'){ const ex=STORES.find(function(s){return norm(s.base)===norm(b);}); if(ex) ex.toInventory=true; } continue; }
+        STORES.push({ name:d.name, base:b, toInventory:d.feeds==='main' });
+        have.add(norm(b));
+      }
+    }
+  } catch(e) {}
+  
   for (const store of STORES) {
     const vs = await fetchStore(store);
+    if (store.home || store.toInventory) { await __syncToInventory(store, vs); }
     perStore[store.name] = vs.length;
     all = all.concat(vs);
   }
