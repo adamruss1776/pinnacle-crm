@@ -4504,6 +4504,77 @@ function MarketView() {
   );
 }
 
+// ── DEALERSHIP MANAGER (add/manage stores, cloud-synced) ──────
+function DealershipManager(){
+  const gold='#c9a84c';
+  const [rows,setRows]=React.useState([]);
+  const [loading,setLoading]=React.useState(true);
+  const [open,setOpen]=React.useState(false);
+  const [busy,setBusy]=React.useState(false);
+  const [msg,setMsg]=React.useState(null);
+  const [form,setForm]=React.useState({name:'',base_url:'',feeds:'sourcing'});
+  const load=React.useCallback(async function(){
+    setLoading(true);
+    try{ const res=await sb.from('dealerships').select('*').order('name'); setRows(res.data||[]); }catch(e){ setRows([]); }
+    setLoading(false);
+  },[]);
+  React.useEffect(function(){ load(); },[load]);
+  const add=async function(){
+    let url=(form.base_url||'').trim(); const name=(form.name||'').trim();
+    if(!name||!url){ setMsg('Name and website are required.'); return; }
+    if(url.indexOf('http')!==0) url='https://'+url;
+    while(url.slice(-1)==='/') url=url.slice(0,-1);
+    setBusy(true); setMsg(null);
+    try{ const res=await sb.from('dealerships').insert({name:name, base_url:url, feeds:form.feeds, active:true}); if(res.error) throw res.error;
+      setForm({name:'',base_url:'',feeds:'sourcing'}); setOpen(false); await load(); }
+    catch(e){ setMsg('Could not save: '+(e.message||e)); }
+    setBusy(false);
+  };
+  const toggleActive=async function(d){ try{ await sb.from('dealerships').update({active:!d.active}).eq('id',d.id); await load(); }catch(e){} };
+  const remove=async function(d){ try{ await sb.from('dealerships').delete().eq('id',d.id); await load(); }catch(e){} };
+  const inp={padding:'10px 12px',background:'var(--surface)',border:'1px solid rgba(201,168,76,0.3)',borderRadius:4,color:'var(--text)',fontSize:13};
+  return (
+    <div style={{marginBottom:24,padding:'16px 18px',background:'var(--surface)',border:'1px solid rgba(201,168,76,0.26)',borderRadius:8}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <div style={{fontSize:11,letterSpacing:'0.28em',color:gold,textTransform:'uppercase'}}>Dealerships</div>
+        <button onClick={function(){setOpen(!open);}} style={{padding:'6px 14px',background:'rgba(201,168,76,0.2)',border:'1px solid rgba(201,168,76,0.55)',borderRadius:3,color:gold,fontSize:11,letterSpacing:'0.12em',textTransform:'uppercase',cursor:'pointer'}}>{open?'Close':'+ Add Dealership'}</button>
+      </div>
+      {open && (
+        <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:14,padding:'12px',background:'rgba(255,255,255,0.02)',borderRadius:6}}>
+          <input value={form.name} onChange={function(e){setForm(Object.assign({},form,{name:e.target.value}));}} placeholder='Dealership name (e.g. Fields BMW South Orlando)' style={inp} />
+          <input value={form.base_url} onChange={function(e){setForm(Object.assign({},form,{base_url:e.target.value}));}} placeholder='Website (e.g. www.fieldsbmw.com)' style={inp} />
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <select value={form.feeds} onChange={function(e){setForm(Object.assign({},form,{feeds:e.target.value}));}} style={inp}>
+              <option value='sourcing'>Group store (for sourcing)</option>
+              <option value='main'>My store (feeds my inventory)</option>
+            </select>
+            <button onClick={add} disabled={busy} style={{padding:'9px 18px',background:'rgba(110,231,183,0.12)',border:'1px solid rgba(110,231,183,0.45)',borderRadius:4,color:'#6ee7b7',fontSize:12,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>{busy?'Saving…':'Save'}</button>
+          </div>
+          {msg && <div style={{fontSize:12,color:'#fca5a5'}}>{msg}</div>}
+        </div>
+      )}
+      {loading ? <div style={{fontSize:12,color:'var(--muted)'}}>Loading…</div> : (
+        rows.length===0 ? <div style={{fontSize:12,color:'var(--muted)'}}>No dealerships yet. Add your store and any group stores you want Jessica to search.</div> :
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {rows.map(function(d){ return (
+            <div key={d.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'8px 10px',background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:4}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,color:'var(--text)'}}>{d.name}{d.feeds==='main' && <span style={{fontSize:9,color:gold,border:'1px solid rgba(201,168,76,0.4)',borderRadius:3,padding:'1px 5px',letterSpacing:'0.1em',textTransform:'uppercase',marginLeft:6}}>My Store</span>}</div>
+                <div style={{fontSize:11,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.base_url}</div>
+              </div>
+              <div style={{display:'flex',gap:6,flexShrink:0}}>
+                <button onClick={function(){toggleActive(d);}} style={{padding:'5px 10px',background:'transparent',border:'1px solid '+(d.active?'rgba(110,231,183,0.4)':'rgba(255,255,255,0.15)'),borderRadius:3,color:d.active?'#6ee7b7':'var(--muted)',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>{d.active?'Active':'Paused'}</button>
+                <button onClick={function(){remove(d);}} style={{padding:'5px 10px',background:'transparent',border:'1px solid rgba(252,165,165,0.3)',borderRadius:3,color:'#fca5a5',fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',cursor:'pointer'}}>Remove</button>
+              </div>
+            </div>
+          ); })}
+        </div>
+      )}
+      <div style={{fontSize:10,color:'#8a7a5a',marginTop:10,lineHeight:1.5}}>Added stores are saved to your account and sync across devices. Live scraping of newly added group stores is coming next.</div>
+    </div>
+  );
+}
+
 function StoreInventoryView({clients}) {
   const [vehicles, setVehicles] = React.useState([]);
   const [scanning, setScanning] = React.useState(false);
@@ -4595,6 +4666,7 @@ ${(scanReport.recommendations||[]).length>0?`<h3 style="color:#27ae60">Recommend
 
   return (
     <div style={{maxWidth:900}}>
+      <DealershipManager/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:28}}>
         <div>
           <div style={{fontSize:10,letterSpacing:"0.4em",color:gold,textTransform:"uppercase",marginBottom:6}}>Multi-Store</div>
