@@ -3039,6 +3039,45 @@ function FollowUpsView({clients}) {
 }
 
 // ── INVENTORY VIEW ──────────────────────────────────────────────────
+// ── CLOUD INVENTORY SYNC (device-independent) ─────────────────
+function __invUuid(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16);}); }
+async function loadInventoryCloud(){
+  try{
+    const { data, error } = await sb.from('inventory').select('*');
+    if(error) throw error;
+    const rows=(data||[]).map(function(r){ return {
+      id:r.id, year:r.year||'', make:r.make||'', model:r.model||'', trim:r.trim||'',
+      vin:r.vin||'', mileage:(r.mileage!=null)?String(r.mileage):'', color:r.color||'',
+      price:(r.price!=null)?r.price:'', oldPrice:(r.old_price!=null)?r.old_price:'',
+      store:r.store||'', status:r.status||'Available', notes:r.notes||'',
+      source:r.source||'manual', stock_number:r.stock_number||'' }; });
+    try{ localStorage.setItem('pinnacle_inventory', JSON.stringify(rows)); }catch(e){}
+    return rows;
+  }catch(e){
+    try{ return JSON.parse(localStorage.getItem('pinnacle_inventory')||'[]'); }catch(_){ return []; }
+  }
+}
+async function saveInventoryCloud(list){
+  const arr=Array.isArray(list)?list:[];
+  arr.forEach(function(v){ if(!v.id){ v.id=__invUuid(); } });
+  try{ localStorage.setItem('pinnacle_inventory', JSON.stringify(arr)); }catch(e){}
+  try{
+    const rows=arr.map(function(v){ return {
+      id:v.id, year:String(v.year||''), make:v.make||'', model:v.model||'', trim:v.trim||'',
+      vin:v.vin||'', mileage:(v.mileage!=null&&v.mileage!=='')?String(v.mileage):null, color:v.color||'',
+      price:(v.price===''||v.price==null)?null:Number(v.price),
+      old_price:(v.oldPrice===''||v.oldPrice==null)?null:Number(v.oldPrice),
+      store:v.store||'', status:v.status||'Available', notes:v.notes||'',
+      source:v.source||'manual', stock_number:v.stock_number||v.stockNum||null,
+      updated_at:new Date().toISOString() }; });
+    if(rows.length){ await sb.from('inventory').upsert(rows,{onConflict:'id'}); }
+    const keep=arr.filter(function(v){return (v.source||'manual')==='manual';}).map(function(v){return v.id;}).filter(Boolean);
+    let del=sb.from('inventory').delete().eq('source','manual');
+    if(keep.length) del=del.not('id','in','('+keep.join(',')+')');
+    await del;
+  }catch(e){ console.warn('inventory cloud save failed', e); }
+}
+
 function InventoryView({clients=[]}) {
   const [vehicles, setVehicles] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]'); } catch { return []; }
@@ -3093,7 +3132,7 @@ const priceDropRef = React.useRef(null);
     try { return JSON.parse(localStorage.getItem('pinnacle_recall_results')||'{}').checkedAt || null; } catch { return null; }
   });
 
-  const saveToLS = (list) => localStorage.setItem('pinnacle_inventory', JSON.stringify(list));
+  const saveToLS = (list) => { saveInventoryCloud(list); };
 
   const formatTimeAgo = (iso) => {
     const mins = Math.floor((Date.now() - new Date(iso)) / 60000);
@@ -4072,8 +4111,7 @@ function RecallMonitorView() {
   const [decoding, setDecoding] = React.useState(false);
  
   React.useEffect(() => {
-    const inv = JSON.parse(localStorage.getItem('pinnacle_inventory') || '[]');
-    setVehicles(inv);
+    loadInventoryCloud().then(function(rows){ setVehicles(rows); });
     const saved = JSON.parse(localStorage.getItem('pinnacle_recall_results') || 'null');
     if (saved) { setResults(saved.results || {}); setLastChecked(saved.checkedAt); }
   }, []);
