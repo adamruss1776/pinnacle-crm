@@ -128,7 +128,9 @@ function __extractGeneric(html){
         price:price,
         mileage:mi(v.odometer ?? v.mileage ?? v.miles),
         condition:(String(v.condition||v.type||v.inventoryType||'').toLowerCase().indexOf('new')>-1)?'New':'Used',
-        stock_number:v.stockNumber||v.stocknumber||v.stock||null
+        stock_number:v.stockNumber||v.stocknumber||v.stock||null,
+        photo_url:v.featuredphoto||v.photo||v.image||null,
+        detail_url:v.url||v.detail_url||v.vdp||null
       };
     }catch(_){}
   }
