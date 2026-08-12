@@ -223,6 +223,10 @@ exports.handler = async () => {
 
   let saved = 0, saveError = null;
   if (rows.length > 0) {
+    // Normalize: every row must share the same key set for PostgREST bulk upsert
+    const __allKeys = Array.from(new Set(rows.flatMap(function(r){ return Object.keys(r); })));
+    rows.forEach(function(r){ __allKeys.forEach(function(k){ if(!(k in r)) r[k]=null; }); });
+
     const up = await fetch(`${SUPABASE_URL}/rest/v1/store_inventory?on_conflict=vin`, {
       method: "POST",
       headers: {
