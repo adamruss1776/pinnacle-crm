@@ -208,6 +208,8 @@ COMPLIANCE: Disclose AI if asked. No guaranteed APR quotes. No pressure. Include
 const AGENT_VEHICLES = ["Lamborghini Huracán","Lamborghini Urus","Bentley Bentayga","Bentley Continental GT","Rolls-Royce Ghost","Rolls-Royce Cullinan","Rolls-Royce Spectre"];
 const STAGES = ["New Lead","Contacted","Negotiating","Closed","Lost"];
 const STAGE_STYLE = {
+  "Customer":    { color:"#6ee7b7", bg:"rgba(110,231,183,0.12)", border:"rgba(110,231,183,0.45)" },
+  "Sold":        { color:"#6ee7b7", bg:"rgba(110,231,183,0.12)", border:"rgba(110,231,183,0.45)" },
   "New Lead":    { color:"#93c5fd", bg:"rgba(147,197,253,0.08)", border:"rgba(147,197,253,0.25)" },
   "Contacted":   { color:"#fcd34d", bg:"rgba(252,211,77,0.08)",  border:"rgba(252,211,77,0.25)"  },
   "Negotiating": { color:"#b8975a", bg:"rgba(201,168,76,0.22)",  border:"rgba(201,168,76,0.5)"  },
@@ -289,6 +291,16 @@ function GLine({label}) {
       <div style={{flex:1,height:1,background:`linear-gradient(to right,${gold},transparent)`}} />
     </div>
   );
+}
+function StatusBadge({client}){
+  if(client && client.sold){
+    const active = client.stage && client.stage!=='Sold' && client.stage!=='Closed' && client.stage!=='Lost';
+    return (<span style={{display:"inline-flex",gap:6,alignItems:"center"}}>
+      <Badge stage="Customer" />
+      {active && <span style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"#b8975a",background:"rgba(201,168,76,0.14)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:2,padding:"3px 8px",fontWeight:500,whiteSpace:"nowrap"}}>New Opportunity</span>}
+    </span>);
+  }
+  return <Badge stage={client?client.stage:undefined} />;
 }
 function Badge({stage}) {
   const s = STAGE_STYLE[stage]||STAGE_STYLE["New Lead"];
@@ -1787,11 +1799,8 @@ function Card({client, onClick}) {
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
-          <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <ScoreBadge client={client} showLabel={false} />
-            <Badge stage={client.stage} />
-          </div>
-          {client.lead_source && <div style={{fontSize:10,color:"var(--dim3)",letterSpacing:"0.15em",textTransform:"uppercase"}}>{client.lead_source}</div>}
+          <StatusBadge client={client} />
+
         </div>
       </div>
     </div>
@@ -2279,6 +2288,10 @@ function Detail({client, onEdit, onBack, onDelete, onQuickUpdate}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:32}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:"var(--dim)",fontSize:12,letterSpacing:"0.2em",textTransform:"uppercase",padding:0,cursor:"pointer"}}>← Back</button>
         <div style={{display:"flex",gap:10}}>
+          {!client.sold
+            ? <button onClick={()=>onQuickUpdate&&onQuickUpdate({sold:true, sold_at:new Date().toISOString(), stage:'Sold'})} style={{padding:"8px 20px",background:"rgba(110,231,183,0.14)",border:"1px solid rgba(110,231,183,0.45)",borderRadius:3,color:"#6ee7b7",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>✓ Mark Sold</button>
+            : <button onClick={()=>onQuickUpdate&&onQuickUpdate({stage:'New Lead'})} style={{padding:"8px 20px",background:"rgba(201,168,76,0.18)",border:"1px solid rgba(201,168,76,0.6)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>+ New Opportunity</button>
+          }
           <button onClick={()=>setShowApproved(true)} style={{padding:"8px 20px",background:"rgba(110,231,183,0.08)",border:"1px solid rgba(110,231,183,0.35)",borderRadius:3,color:"#6ee7b7",fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>🎉 Approved</button>
           <button onClick={()=>{setDeskInit(null);setShowDesk(true);}} style={{padding:"8px 20px",background:"rgba(201,168,76,0.1)",border:"1px solid rgba(201,168,76,0.4)",borderRadius:3,color:gold,fontSize:11,letterSpacing:"0.2em",textTransform:"uppercase",cursor:"pointer"}}>✦ Quote</button>
           <button onClick={()=>setShowEmail(true)} style={{padding:"8px 20px",background:"rgba(201,168,76,0.18)",border:"1px solid rgba(201,168,76,0.6)",borderRadius:3,color:gold,fontSize:12,letterSpacing:"0.18em",textTransform:"uppercase",cursor:"pointer"}}>✦ Draft Email</button>
@@ -2292,7 +2305,7 @@ function Detail({client, onEdit, onBack, onDelete, onQuickUpdate}) {
       <div style={{marginBottom:28}}>
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:6,flexWrap:"wrap"}}>
           <h1 style={{fontSize:34,color:"var(--text)"}}>{client.first_name} {client.last_name}</h1>
-          <Badge stage={client.stage} />
+          <StatusBadge client={client} />
           <ScoreBadge client={client} showLabel={true} />
         </div>
         {client.vehicle_of_interest && <div style={{fontSize:18,color:"var(--muted)",fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic"}}>{client.vehicle_of_interest}</div>}
