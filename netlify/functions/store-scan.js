@@ -106,6 +106,51 @@ async function __syncToInventory(store, vs){
   }catch(e){}
 }
 
+// ── GENERIC EXTRACTOR (non-Dealer.com sites, e.g. AutoDriven/Next.js) ──
+function __extractGeneric(html){
+  const out={};
+  const re=/"vin"\s*:\s*"([A-HJ-NPR-Z0-9]{17})"/g; let m;
+  const pp=function(x){ if(x==null) return null; const n=parseFloat(String(x).replace(/[^0-9.]/g,'')); return (isNaN(n)||n<=0)?null:n; };
+  const mi=function(x){ if(x==null) return null; const n=parseInt(String(x).replace(/[^0-9]/g,''),10); return isNaN(n)?null:n; };
+  while((m=re.exec(html))!==null){
+    let s=m.index,depth=0;
+    while(s>0){ const c=html[s]; if(c==='}')depth++; if(c==='{'){ if(depth===0)break; depth--; } s--; }
+    let e=s,d=0;
+    for(;e<html.length;e++){ if(html[e]==='{')d++; if(html[e]==='}'){ d--; if(d===0)break; } }
+    try{
+      const v=JSON.parse(html.slice(s,e+1));
+      if(!v.vin || out[v.vin]) continue;
+      const price=pp(v.internetPrice ?? v.askingPrice ?? v.salePrice ?? v.specialprice ?? v.price ?? v.msrp ?? (v.pricing && (v.pricing.internetPrice ?? v.pricing.retailPrice)));
+      out[v.vin]={
+        vin:v.vin,
+        year:Number(v.modelYear||v.year)||null,
+        make:v.make||null, model:v.model||null, trim:v.trim||null,
+        price:price,
+        mileage:mi(v.odometer ?? v.mileage ?? v.miles),
+        condition:(String(v.condition||v.type||v.inventoryType||'').toLowerCase().indexOf('new')>-1)?'New':'Used',
+        stock_number:v.stockNumber||v.stocknumber||v.stock||null
+      };
+    }catch(_){}
+  }
+  return Object.values(out);
+}
+async function __fetchGeneric(store){
+  const out={};
+  for(let pg=1; pg<=12; pg++){
+    let found=[];
+    try{
+      const res=await fetch(store.base+'/inventory?page='+pg, { headers:{ 'User-Agent':'Mozilla/5.0 (PinnacleCRM scan)' } });
+      if(!res.ok) break;
+      found=__extractGeneric(await res.text());
+    }catch(e){ break; }
+    if(!found.length) break;
+    let anyNew=false;
+    found.forEach(function(v){ if(!out[v.vin]){ out[v.vin]=v; anyNew=true; } });
+    if(!anyNew) break;
+  }
+  return Object.values(out);
+}
+
 exports.handler = async () => {
   const now = new Date().toISOString();
   const perStore = {};
@@ -127,7 +172,8 @@ exports.handler = async () => {
   } catch(e) {}
   
   for (const store of STORES) {
-    const vs = await fetchStore(store);
+    let vs = await fetchStore(store);
+    if (!vs || !vs.length) { vs = await __fetchGeneric(store); }
     if (store.home || store.toInventory) { await __syncToInventory(store, vs); }
     perStore[store.name] = vs.length;
     all = all.concat(vs);
