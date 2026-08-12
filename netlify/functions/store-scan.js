@@ -244,3 +244,5 @@ exports.handler = async () => {
     body: JSON.stringify({ scannedAt: now, perStore, total: all.length, saved, saveError, newArrivals: newArrivals.length, priceDrops }),
   };
 };
+
+// scraper: dealership-driven + generic fallback
