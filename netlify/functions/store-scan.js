@@ -120,7 +120,7 @@ function __extractGeneric(html){
     try{
       const v=JSON.parse(html.slice(s,e+1));
       if(!v.vin || out[v.vin]) continue;
-      const price=pp(v.internetPrice ?? v.askingPrice ?? v.salePrice ?? v.specialprice ?? v.price ?? v.msrp ?? (v.pricing && (v.pricing.internetPrice ?? v.pricing.retailPrice)));
+      const price=pp(v.internetPrice || v.askingPrice || v.salePrice || v.specialprice || v.price || v.msrp || (v.pricing && (v.pricing.internetPrice || v.pricing.retailPrice)));
       out[v.vin]={
         vin:v.vin,
         year:Number(v.modelYear||v.year)||null,
