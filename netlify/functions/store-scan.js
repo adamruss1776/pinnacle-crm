@@ -147,7 +147,7 @@ async function __fetchGeneric(store){
     }catch(e){ break; }
     if(!found.length) break;
     let anyNew=false;
-    found.forEach(function(v){ if(!out[v.vin]){ out[v.vin]=v; anyNew=true; } });
+    found.forEach(function(v){ v.store=store.name; if(!out[v.vin]){ out[v.vin]=v; anyNew=true; } });
     if(!anyNew) break;
   }
   return Object.values(out);
