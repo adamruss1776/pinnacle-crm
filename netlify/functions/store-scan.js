@@ -136,6 +136,32 @@ function __extractGeneric(html){
   }
   return Object.values(out);
 }
+function __extractSchema(html){
+  var Q=String.fromCharCode(34), BS=String.fromCharCode(92), OB=String.fromCharCode(123), CB=String.fromCharCode(125);
+  var un=html.split(BS+Q).join(Q);
+  var out={}, re=/"vehicleIdentificationNumber":"([A-HJ-NPR-Z0-9]{17})"/g, m;
+  function enc(str,idx){var s=idx,depth=0;while(s>0){var c=str[s];if(c===CB)depth++;if(c===OB){if(depth===0)break;depth--;}s--;}var e=s,d=0;for(;e<str.length;e++){if(str[e]===OB)d++;if(str[e]===CB){d--;if(d===0)break;}}return str.slice(s,e+1);}
+  function g(obj,rx){var x=obj.match(rx);return x?x[1]:null;}
+  while((m=re.exec(un))!==null){
+    var vin=m[1]; if(out[vin])continue;
+    var obj=enc(un,m.index);
+    var pr=g(obj,/"price":(\d+)/);
+    out[vin]={
+      vin:vin,
+      year:g(obj,/"vehicleModelDate":"?(\d{4})/)||g(obj,/"modelDate":"?(\d{4})/)||null,
+      make:g(obj,/"brand":\{[^{}]*"name":"([^"]+)"/)||null,
+      model:g(obj,/"model":"([^"]+)"/)||null,
+      trim:null,
+      price:pr?Number(pr):null,
+      mileage:g(obj,/"mileageFromOdometer":\{[^{}]*"value":(\d+)/)||null,
+      condition:obj.indexOf("UsedCondition")>-1?"Used":(obj.indexOf("NewCondition")>-1?"New":"Used"),
+      stock_number:g(obj,/"sku":"([^"]+)"/)||null,
+      photo_url:g(obj,/"image":"([^"]+)"/)||null,
+      detail_url:g(obj,/"url":"([^"]+)"/)||null
+    };
+  }
+  return Object.values(out);
+}
 async function __fetchGeneric(store){
   const out={};
   for(let pg=1; pg<=12; pg++){
@@ -143,7 +169,7 @@ async function __fetchGeneric(store){
     try{
       const res=await fetch(store.base+'/inventory?page='+pg, { headers:{ 'User-Agent':'Mozilla/5.0 (PinnacleCRM scan)' } });
       if(!res.ok) break;
-      found=__extractGeneric(await res.text());
+      var __txt=await res.text(); found=__extractGeneric(__txt); if(!found.length) found=__extractSchema(__txt);
     }catch(e){ break; }
     if(!found.length) break;
     let anyNew=false;
