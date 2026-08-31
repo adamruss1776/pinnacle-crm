@@ -199,9 +199,12 @@ exports.handler = async () => {
     }
   } catch(e) {}
   
-  for (const store of STORES) {
-    let vs = await fetchStore(store);
-    if (!vs || !vs.length) { vs = await __fetchGeneric(store); }
+  const __withTimeout=function(p,ms){return Promise.race([Promise.resolve(p),new Promise(function(res){setTimeout(function(){res([]);},ms);})]);};
+  const __results = await Promise.all(STORES.map(function(store){
+    return __withTimeout((async function(){ let vs = await fetchStore(store); if (!vs || !vs.length) { vs = await __fetchGeneric(store); } return vs||[]; })(), 8000).then(function(vs){ return { store: store, vs: (vs&&vs.length)?vs:[] }; });
+  }));
+  for (const __r of __results) {
+    const store=__r.store, vs=__r.vs;
     if (store.home || store.toInventory) { await __syncToInventory(store, vs); }
     perStore[store.name] = vs.length;
     all = all.concat(vs);
