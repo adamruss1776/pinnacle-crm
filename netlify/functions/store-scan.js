@@ -4,6 +4,9 @@
 // with new-arrival and price-drop detection.
 const SUPABASE_URL = "https://ozrybagfwnsaakjamztl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_hkoTQVteawqO4YAbj17F6Q_PmshLH50";
+// Abort any fetch that runs too long so the Lambda event loop drains and the response returns promptly.
+const __origFetch = globalThis.fetch;
+globalThis.fetch = function(u, o){ o = Object.assign({}, o||{}); if(!o.signal){ const c = new AbortController(); o.signal = c.signal; setTimeout(function(){ try{ c.abort(); }catch(e){} }, 9000); } return __origFetch(u, o); };
 
 const STORES = [
   { name: "Fields Motorcars Orlando", base: "https://www.fieldsmotorcarsorlando.com", home: true },
