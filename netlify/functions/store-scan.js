@@ -277,6 +277,7 @@ exports.handler = async () => {
     body: JSON.stringify({ scannedAt: now, perStore, total: all.length, saved, saveError, newArrivals: newArrivals.length, priceDrops }),
   };
 
-  } catch (__e) { return { statusCode: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ error: String((__e && __e.message) || __e), stack: String((__e && __e.stack) || "").slice(0,500), saved: 0, total: 0, perStore: {} }) }; };
+  } catch (__e) { return { statusCode: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }, body: JSON.stringify({ error: String((__e && __e.message) || __e), stack: String((__e && __e.stack) || "").slice(0,500), saved: 0, total: 0, perStore: {} }) }; }
+};
 
 // scraper: dealership-driven + generic fallback
